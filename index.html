@@ -134,20 +134,6 @@
       background: #fafafa;
       font-size: 14px;
     }
-    .archive-item:hover {
-      background: #f0f0f0;
-    }
-    .archive-header {
-      display: flex;
-      justify-content: space-between;
-      margin-bottom: 6px;
-      font-weight: bold;
-    }
-    .archive-details {
-      display: flex;
-      justify-content: space-between;
-      color: #555;
-    }
     .archive-actions {
       margin-top: 10px;
       text-align: right;
@@ -174,7 +160,7 @@
     <button class="tab-btn" onclick="switchTab('archive')">Архив</button>
   </div>
 
-  <!-- === ОСНОВНАЯ ФОРМА === -->
+  <!-- === ФОРМА === -->
   <div id="form-tab" class="tab-content active">
     <div class="header-row">
       <div>
@@ -367,14 +353,14 @@
       header: {
         order: document.getElementById('order-number').value,
         date: document.getElementById('current-date').textContent,
-        company: document.getElementById('client-company').value || '—',
-        contact: document.getElementById('client-contact').value || '—',
-        master: document.getElementById('master-name').value || '—',
-        clientFio: document.getElementById('client-fio').value || '—',
-        brand: document.getElementById('vehicle-brand').value || '—',
-        plate: document.getElementById('license-plate').value || '—',
+        company: document.getElementById('client-company').value || '',
+        contact: document.getElementById('client-contact').value || '',
+        master: document.getElementById('master-name').value || '',
+        clientFio: document.getElementById('client-fio').value || '',
+        brand: document.getElementById('vehicle-brand').value || '',
+        plate: document.getElementById('license-plate').value || '',
         phone: '+7 999 599 00 03',
-        mileage: (document.getElementById('mileage').value || '—') + ' км'
+        mileage: (document.getElementById('mileage').value || '') + ' км'
       },
       planned: getTableData('planned-table', false),
       actual: getTableData('actual-table', true),
@@ -452,10 +438,8 @@
           <span>Заявка от ${item.header.date}</span>
           <span>Номер: ${item.header.order}</span>
         </div>
-        <div class="archive-details">
-          <span>Компания: ${item.header.company}</span>
-          <span>ФИО: ${item.header.clientFio}</span>
-        </div>
+        <div>Компания: ${item.header.company || '—'}</div>
+        <div>ФИО клиента: ${item.header.clientFio || '—'}</div>
         <div>Итого: ${grandStr}</div>
         <div class="archive-actions">
           <button class="btn-sm" style="background:#17a2b8;" onclick="loadClaim(${item.id})">Редактировать</button>
@@ -478,13 +462,13 @@
     lastSeq = parseInt(item.header.order.split('-')[2]) - 1;
 
     document.getElementById('order-number').value = item.header.order;
-    document.getElementById('client-company').value = item.header.company === '—' ? '' : item.header.company;
-    document.getElementById('client-contact').value = item.header.contact === '—' ? '' : item.header.contact;
-    document.getElementById('master-name').value = item.header.master === '—' ? '' : item.header.master;
-    document.getElementById('client-fio').value = item.header.clientFio === '—' ? '' : item.header.clientFio;
-    document.getElementById('vehicle-brand').value = item.header.brand === '—' ? '' : item.header.brand;
-    document.getElementById('license-plate').value = item.header.plate === '—' ? '' : item.header.plate;
-    document.getElementById('mileage').value = item.header.mileage.replace(' км', '').replace('—', '');
+    document.getElementById('client-company').value = item.header.company;
+    document.getElementById('client-contact').value = item.header.contact;
+    document.getElementById('master-name').value = item.header.master;
+    document.getElementById('client-fio').value = item.header.clientFio;
+    document.getElementById('vehicle-brand').value = item.header.brand;
+    document.getElementById('license-plate').value = item.header.plate;
+    document.getElementById('mileage').value = item.header.mileage.replace(' км', '');
 
     item.planned.forEach(row => {
       const tr = document.querySelector('#planned-table tbody').insertRow();
@@ -547,14 +531,14 @@
   function printClaim() {
     const d = document.getElementById('current-date').textContent;
     const n = document.getElementById('order-number').value;
-    const c = document.getElementById('client-company').value || '—';
-    const ct = document.getElementById('client-contact').value || '—';
-    const m = document.getElementById('master-name').value || '—';
-    const clientFio = document.getElementById('client-fio').value || '—';
-    const b = document.getElementById('vehicle-brand').value || '—';
-    const p = document.getElementById('license-plate').value || '—';
+    const c = document.getElementById('client-company').value || '';
+    const ct = document.getElementById('client-contact').value || '';
+    const m = document.getElementById('master-name').value || '';
+    const clientFio = document.getElementById('client-fio').value || '';
+    const b = document.getElementById('vehicle-brand').value || '';
+    const p = document.getElementById('license-plate').value || '';
     const ph = '+7 999 599 00 03';
-    const mi = (document.getElementById('mileage').value || '—') + ' км';
+    const mi = document.getElementById('mileage').value ? document.getElementById('mileage').value + ' км' : '';
 
     let works = 0, parts = 0;
     document.querySelectorAll('#actual-table tbody tr').forEach(row => {
@@ -614,7 +598,7 @@
   function printOrder() {
     const d = document.getElementById('current-date').textContent;
     const n = document.getElementById('order-number').value;
-    const m = document.getElementById('master-name').value || '—';
+    const m = document.getElementById('master-name').value || '';
 
     let works = 0, parts = 0;
     document.querySelectorAll('#actual-table tbody tr').forEach(row => {
