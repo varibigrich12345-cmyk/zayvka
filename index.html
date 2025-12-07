@@ -286,6 +286,9 @@
   let workIndex = 1, actualIndex = 1, partIndex = 1;
   let lastSeq = parseInt(localStorage.getItem('lastClaimSeq') || '0');
 
+  // ✅ ТВОЙ ID GOOGLE ТАБЛИЦЫ — ВСТАВЛЕН
+  const SHEET_ID = '18gp0Vm4XKYtScNIwp423XHlDuEx1Ne_sbcd1NSO0Bko';
+
   init();
 
   function init() {
@@ -293,7 +296,7 @@
     const d = `${String(now.getDate()).padStart(2, '0')}.${String(now.getMonth() + 1).padStart(2, '0')}.${now.getFullYear()}`;
     document.getElementById('current-date').textContent = d;
     generateOrderNumber();
-    loadArchive();
+    loadArchiveFromGoogle();
   }
 
   function generateOrderNumber() {
@@ -389,7 +392,6 @@
     printDocument('order');
   }
 
-  // === ГЛАВНАЯ ФУНКЦИЯ: СОХРАНЕНИЕ + ОТПРАВКА В GOOGLE ===
   function saveAndExport(type) {
     const data = {
       id: Date.now(),
@@ -421,7 +423,7 @@
       grand: works + parts
     };
 
-    // Локальное сохранение (для архива и печати)
+    // Локальное сохранение
     const key = 'claims';
     let list = JSON.parse(localStorage.getItem(key) || '[]');
     const existingIndex = list.findIndex(x => x.header.order === data.header.order);
@@ -432,19 +434,19 @@
     }
     localStorage.setItem(key, JSON.stringify(list));
 
-    // === ОТПРАВКА В GOOGLE ТАБЛИЦЫ ===
+    // Отправка в Google
     const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyApt6AAyW6bPdBywlDA3Ud5Ci3ix5pGhzz1I5INjm9_5V064psnMLe_XYNpBH4CgCd_Q/exec';
     fetch(SCRIPT_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
     }).catch(err => {
-      console.error('Ошибка отправки в Google:', err);
+      console.error('Ошибка отправки:', err);
     });
 
-    // Локальный CSV (для резервной загрузки в 1С)
+    // Локальный CSV
     autoExportToCSV(data, type);
-    loadArchive();
+    loadArchiveFromGoogle();
   }
 
   function getTableData(tableId, hasPrice) {
@@ -480,8 +482,69 @@
     return rows;
   }
 
-  function loadArchive() {
+  // === ЗАГРУЗКА АРХИВА ИЗ GOOGLE ТАБЛИЦЫ ===
+  function loadArchiveFromGoogle() {
+    const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv`;
+    
+    fetch(CSV_URL)
+      .then(response => response.text())
+      .then(csvText => {
+        const lines = csvText.split('\n').slice(1).filter(line => line.trim());
+        const claims = {};
+        
+        lines.forEach(line => {
+          const cleanLine = line.replace(/^"|"$/g, '').replace(/""/g, '"');
+          const cols = cleanLine.split('","');
+          if (cols.length < 18) return;
+          
+          const order = cols[0];
+          if (!claims[order]) {
+            claims[order] = {
+              header: {
+                order: cols[0],
+                date: cols[1],
+                company: cols[2],
+                contact: cols[3],
+                master: cols[4],
+                clientFio: cols[5], // ← ФИО клиента!
+                brand: cols[6],
+                plate: cols[7],
+                phone: cols[8],
+                mileage: cols[9]
+              },
+              planned: [],
+              actual: [],
+              parts: [],
+              status: cols[18] || 'zayavka',
+              savedAt: new Date()
+            };
+          }
+          
+          const type = cols[10];
+          if (type === 'Заявленная') {
+            claims[order].planned.push({desc: cols[11], qty: cols[12], side: cols[13], pos: cols[14]});
+          } else if (type === 'Выполненная') {
+            claims[order].actual.push({desc: cols[11], qty: cols[12], side: cols[13], pos: cols[14], price: cols[16], total: cols[17]});
+          } else if (type === 'Запчасть') {
+            claims[order].parts.push({name: cols[11], qty: cols[12], art: cols[15], price: cols[16], total: cols[17]});
+          }
+        });
+        
+        localStorage.setItem('claims', JSON.stringify(Object.values(claims)));
+        renderArchive(Object.values(claims));
+      })
+      .catch(err => {
+        console.error('Ошибка загрузки из Google:', err);
+        loadArchiveFromLocal();
+      });
+  }
+
+  function loadArchiveFromLocal() {
     const list = JSON.parse(localStorage.getItem('claims') || '[]');
+    renderArchive(list);
+  }
+
+  function renderArchive(list) {
     const container = document.getElementById('archive-list');
     container.innerHTML = '';
     if (list.length === 0) {
@@ -505,7 +568,7 @@
       container.appendChild(dateDiv);
 
       groups[date].forEach(item => {
-        const grandStr = (parseFloat(item.totals.grand) || 0).toFixed(2) + ' ₽';
+        const grandStr = (parseFloat(item.totals?.grand || 0)).toFixed(2) + ' ₽';
         const statusClass = item.status === 'zakaz-naryad' ? 'status-zakaz' : 'status-zayavka';
         const statusText = item.status === 'zakaz-naryad' ? 'Заказ-наряд' : 'Заявка';
         
@@ -521,9 +584,9 @@
           <div>Итого: ${grandStr}</div>
           <div class="archive-actions">
             ${item.status === 'zayavka' ? 
-              `<button class="btn-sm" style="background:#17a2b8;" onclick="loadClaim(${item.id})">Редактировать</button>` : 
+              `<button class="btn-sm" style="background:#17a2b8;" onclick="loadClaim('${item.header.order}')">Редактировать</button>` : 
               `<button class="btn-sm" style="background:#6c757d;" disabled>Закрыто</button>`}
-            <button class="btn-sm" style="background:#28a745;" onclick="printClaimFromArchive(${item.id})">Печать</button>
+            <button class="btn-sm" style="background:#28a745;" onclick="printClaimFromArchive('${item.header.order}')">Печать</button>
           </div>
         `;
         container.appendChild(div);
@@ -531,17 +594,9 @@
     });
   }
 
-  // Остальные функции (loadClaim, printClaimFromArchive, switchTab, printDocument, createTableHTML, printWindow, autoExportToCSV)
-  // остаются без изменений — они уже есть в предыдущем коде.
-  // Для краткости здесь не повторяю, но в полной версии они присутствуют.
-
-  // ...
-  // (все остальные функции — как в предыдущем финальном коде)
-  // ...
-
-  function loadClaim(id) {
+  function loadClaim(orderId) {
     const list = JSON.parse(localStorage.getItem('claims') || '[]');
-    const item = list.find(x => x.id == id);
+    const item = list.find(x => x.header.order === orderId);
     if (!item || item.status === 'zakaz-naryad') return;
 
     switchTab('form');
@@ -604,14 +659,12 @@
     });
   }
 
-  function printClaimFromArchive(id) {
-    const list = JSON.parse(localStorage.getItem('claims') || '[]');
-    const item = list.find(x => x.id == id);
-    if (!item) return;
-
-    loadClaim(id);
+  function printClaimFromArchive(orderId) {
+    loadClaim(orderId);
     setTimeout(() => {
-      if (item.status === 'zakaz-naryad') {
+      const list = JSON.parse(localStorage.getItem('claims') || '[]');
+      const item = list.find(x => x.header.order === orderId);
+      if (item && item.status === 'zakaz-naryad') {
         printDocument('order');
       } else {
         printDocument('claim');
