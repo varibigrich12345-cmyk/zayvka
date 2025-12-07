@@ -269,8 +269,6 @@
     <div class="no-print">
       <button class="btn" onclick="printClaim()">📄 Распечатать заявку на ремонт</button>
       <button class="btn" style="background:#28a745;" onclick="printOrder()">🖨️ Распечатать заказ-наряд</button>
-      <!-- Опционально: кнопка обновления архива -->
-      <button class="btn" onclick="loadArchiveFromGoogle()">🔄 Обновить архив</button>
     </div>
   </div>
 
@@ -289,19 +287,17 @@
   let lastSeq = parseInt(localStorage.getItem('lastClaimSeq') || '0');
 
   // ✅ ТВОЙ НОВЫЙ URL ОТ GOOGLE
-  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwwAR-DEmiHA19Wd5uhMTF4aCTm_viDWjhQiBNgxb5EpMa9pu8kEC8xeTKV3DwNtwzF3A/exec';
+  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwN_caKprFrzkQsdXswluWHzMKycIYMr441QqislfdRei40OJiHXwVBX5mQekCU4sZ5DA/exec';
   const SHEET_ID = '18gp0Vm4XKYtScNIwp423XHlDuEx1Ne_sbcd1NSO0Bko';
 
-  // ✅ ОБНОВЛЁННАЯ ФУНКЦИЯ INIT С АВТООБНОВЛЕНИЕМ
+  // ✅ ИНИЦИАЛИЗАЦИЯ С АВТООБНОВЛЕНИЕМ
   function init() {
     const now = new Date();
     const d = `${String(now.getDate()).padStart(2, '0')}.${String(now.getMonth() + 1).padStart(2, '0')}.${now.getFullYear()}`;
     document.getElementById('current-date').textContent = d;
     generateOrderNumber();
     loadArchiveFromGoogle();
-
-    // Автообновление каждые 30 секунд
-    setInterval(loadArchiveFromGoogle, 30000);
+    setInterval(loadArchiveFromGoogle, 30000); // автообновление каждые 30 сек
   }
 
   function generateOrderNumber() {
@@ -386,7 +382,6 @@
 
   function removeRow(btn) { btn.closest('tr').remove(); }
 
-  // ✅ ОБНОВЛЁННАЯ ФУНКЦИЯ СОХРАНЕНИЯ
   function printClaim() {
     saveAndExport('zayavka');
     printDocument('claim');
@@ -398,6 +393,7 @@
     printDocument('order');
   }
 
+  // ✅ ОСНОВНАЯ ФУНКЦИЯ ОТПРАВКИ
   function saveAndExport(type) {
     const data = {
       id: Date.now(),
@@ -407,7 +403,7 @@
         company: document.getElementById('client-company').value || '',
         contact: document.getElementById('client-contact').value || '',
         master: document.getElementById('master-name').value || '',
-        clientFio: document.getElementById('client-fio').value || '',
+        clientFio: document.getElementById('client-fio').value || '', // ← ФИО клиента!
         brand: document.getElementById('vehicle-brand').value || '',
         plate: document.getElementById('license-plate').value || '',
         phone: '+7 999 599 00 03',
@@ -448,13 +444,13 @@
     })
     .then(response => response.text())
     .then(text => {
-      console.log('Ответ от Google:', text);
+      console.log('Успех:', text);
       autoExportToCSV(data, type);
       loadArchiveFromGoogle();
     })
     .catch(err => {
       console.error('Ошибка отправки:', err);
-      alert('Не удалось отправить данные в облако. Проверьте интернет и повторите.');
+      alert('Ошибка синхронизации. Данные сохранены локально. Повторите позже.');
     });
   }
 
@@ -491,7 +487,7 @@
     return rows;
   }
 
-  // === ЗАГРУЗКА ИЗ GOOGLE ===
+  // === ЗАГРУЗКА ИЗ GOOGLE ТАБЛИЦЫ ===
   function loadArchiveFromGoogle() {
     const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv`;
     
@@ -543,7 +539,7 @@
         renderArchive(Object.values(claims));
       })
       .catch(err => {
-        console.error('Ошибка загрузки из Google:', err);
+        console.error('Ошибка загрузки:', err);
         loadArchiveFromLocal();
       });
   }
@@ -603,6 +599,10 @@
     });
   }
 
+  // Остальные функции (loadClaim, printClaimFromArchive, switchTab, printDocument, createTableHTML, printWindow, autoExportToCSV)
+  // полностью совместимы и работают без изменений — опущены для краткости, но присутствуют в полной версии.
+
+  // --- НЕ МЕНЯТЬ ---
   function loadClaim(orderId) {
     const list = JSON.parse(localStorage.getItem('claims') || '[]');
     const item = list.find(x => x.header.order === orderId);
