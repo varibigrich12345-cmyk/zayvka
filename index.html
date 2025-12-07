@@ -140,6 +140,15 @@
       font-weight: bold;
       margin-top: 20px;
     }
+    .archive-status {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 12px;
+      margin-left: 8px;
+    }
+    .status-zayavka { background: #d1ecf1; color: #0c5460; }
+    .status-zakaz { background: #d4edda; color: #155724; }
     .archive-actions {
       margin-top: 10px;
       text-align: right;
@@ -159,7 +168,7 @@
 
 <div class="container">
   <div class="tabs">
-    <button class="tab-btn active" onclick="switchTab('form')">Новая заявка</button>
+    <button class="tab-btn active" onclick="switchTab('form')">Заявка на ремонт</button>
     <button class="tab-btn" onclick="switchTab('archive')">Архив</button>
   </div>
 
@@ -175,7 +184,7 @@
       <div><strong>Дата:</strong> <span id="current-date">—</span></div>
     </div>
 
-    <h2>Форма заявки</h2>
+    <h2>Заявка на ремонт</h2>
 
     <div class="form-row">
       <div class="form-group">
@@ -259,9 +268,8 @@
     </table>
 
     <div class="no-print">
-      <button class="btn" onclick="printClaim()">📄 Распечатать заявку</button>
+      <button class="btn" onclick="printClaim()">📄 Распечатать заявку на ремонт</button>
       <button class="btn" style="background:#28a745;" onclick="printOrder()">🖨️ Распечатать заказ-наряд</button>
-      <button class="btn btn-save" onclick="saveAndExport()">✅ Сохранить и экспортировать</button>
     </div>
   </div>
 
@@ -270,7 +278,7 @@
     <h2>Архив заявок</h2>
     <div id="archive-list" class="archive-list"></div>
     <div class="no-print" style="margin-top:20px;">
-      <button class="btn btn-archive" style="background:#6c757d;" onclick="switchTab('form')">← Новая заявка</button>
+      <button class="btn btn-archive" style="background:#6c757d;" onclick="switchTab('form')">← Заявка на ремонт</button>
     </div>
   </div>
 </div>
@@ -349,7 +357,19 @@
 
   function removeRow(btn) { btn.closest('tr').remove(); }
 
-  function saveAndExport() {
+  // === ПЕЧАТЬ ЗАЯВКИ → СОХРАНЕНИЕ КАК ЗАЯВКИ ===
+  function printClaim() {
+    saveAndExport('zayavka');
+    printDocument('claim');
+  }
+
+  // === ПЕЧАТЬ ЗАКАЗ-НАРЯДА → СОХРАНЕНИЕ КАК ЗАКАЗ-НАРЯДА ===
+  function printOrder() {
+    saveAndExport('zakaz-naryad');
+    printDocument('order');
+  }
+
+  function saveAndExport(type) {
     const data = {
       id: Date.now(),
       header: {
@@ -367,7 +387,8 @@
       planned: getTableData('planned-table', false),
       actual: getTableData('actual-table', true),
       parts: getTableData('parts-table', true),
-      savedAt: new Date().toISOString()
+      savedAt: new Date().toISOString(),
+      status: type === 'zakaz-naryad' ? 'zakaz-naryad' : 'zayavka'
     };
 
     let works = 0, parts = 0;
@@ -381,11 +402,19 @@
 
     const key = 'claims';
     let list = JSON.parse(localStorage.getItem(key) || '[]');
-    list.push(data);
+    
+    // Обновляем, если номер уже есть
+    const existingIndex = list.findIndex(x => x.header.order === data.header.order);
+    if (existingIndex >= 0) {
+      list[existingIndex] = data;
+    } else {
+      list.push(data);
+    }
+    
     localStorage.setItem(key, JSON.stringify(list));
 
-    autoExportToCSV(data);
-    alert(`✅ Заявка сохранена!\nНомер: ${data.header.order}`);
+    // Экспорт CSV
+    autoExportToCSV(data, type);
     loadArchive();
   }
 
@@ -448,15 +477,23 @@
 
       groups[date].forEach(item => {
         const grandStr = (parseFloat(item.totals.grand) || 0).toFixed(2) + ' ₽';
+        const statusClass = item.status === 'zakaz-naryad' ? 'status-zakaz' : 'status-zayavka';
+        const statusText = item.status === 'zakaz-naryad' ? 'Заказ-наряд' : 'Заявка';
+        
         const div = document.createElement('div');
         div.className = 'archive-item';
         div.innerHTML = `
-          <div>Заявка №: ${item.header.order}</div>
+          <div>
+            Заявка №: ${item.header.order}
+            <span class="archive-status ${statusClass}">${statusText}</span>
+          </div>
           <div>Компания: ${item.header.company || '—'}</div>
           <div>ФИО клиента: ${item.header.clientFio || '—'}</div>
           <div>Итого: ${grandStr}</div>
           <div class="archive-actions">
-            <button class="btn-sm" style="background:#17a2b8;" onclick="loadClaim(${item.id})">Редактировать</button>
+            ${item.status === 'zayavka' ? 
+              `<button class="btn-sm" style="background:#17a2b8;" onclick="loadClaim(${item.id})">Редактировать</button>` : 
+              `<button class="btn-sm" style="background:#6c757d;" disabled>Закрыто</button>`}
             <button class="btn-sm" style="background:#28a745;" onclick="printClaimFromArchive(${item.id})">Печать</button>
           </div>
         `;
@@ -468,7 +505,7 @@
   function loadClaim(id) {
     const list = JSON.parse(localStorage.getItem('claims') || '[]');
     const item = list.find(x => x.id == id);
-    if (!item) return;
+    if (!item || item.status === 'zakaz-naryad') return;
 
     switchTab('form');
     ['planned-table', 'actual-table', 'parts-table'].forEach(id => {
@@ -531,8 +568,21 @@
   }
 
   function printClaimFromArchive(id) {
+    const list = JSON.parse(localStorage.getItem('claims') || '[]');
+    const item = list.find(x => x.id == id);
+    if (!item) return;
+
+    // временно загружаем данные
+    const tempOrder = document.getElementById('order-number').value;
     loadClaim(id);
-    setTimeout(printClaim, 100);
+    setTimeout(() => {
+      if (item.status === 'zakaz-naryad') {
+        printDocument('order');
+      } else {
+        printDocument('claim');
+      }
+      // восстановление не требуется — форма и так будет переключена
+    }, 100);
   }
 
   function switchTab(tab) {
@@ -542,7 +592,15 @@
     document.querySelector(`.tab-btn:nth-child(${tab === 'form' ? 1 : 2})`).classList.add('active');
   }
 
-  function printClaim() {
+  function printDocument(type) {
+    if (type === 'claim') {
+      printClaimDocument();
+    } else {
+      printOrderDocument();
+    }
+  }
+
+  function printClaimDocument() {
     const d = document.getElementById('current-date').textContent;
     const n = document.getElementById('order-number').value;
     const c = document.getElementById('client-company').value || '';
@@ -609,7 +667,7 @@
     printWindow(html);
   }
 
-  function printOrder() {
+  function printOrderDocument() {
     const d = document.getElementById('current-date').textContent;
     const n = document.getElementById('order-number').value;
     const m = document.getElementById('master-name').value || '';
@@ -735,7 +793,11 @@
     };
   }
 
-  function autoExportToCSV(data) {
+  function autoExportToCSV(data, type) {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16).replace('T', '_');
+    const filenameSuffix = type === 'zakaz-naryad' ? 'zakaz-naryad' : 'zayavka';
+    const filename = `zayavka_1c_${data.header.order}_${timestamp}_${filenameSuffix}.csv`;
+
     const order = data.header.order;
     const date = data.header.date;
     const company = data.header.company || '';
@@ -767,7 +829,7 @@
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `zayavka_1c_${order}.csv`;
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
