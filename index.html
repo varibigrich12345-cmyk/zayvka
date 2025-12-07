@@ -152,6 +152,18 @@
       margin-top: 10px;
       text-align: right;
     }
+    .signature-line {
+      margin-top: 30px;
+      display: flex;
+      align-items: flex-end;
+      gap: 30px;
+    }
+    .signature-block {
+      width: 50%;
+    }
+    .signature-block p {
+      margin: 4px 0;
+    }
   </style>
 </head>
 <body>
@@ -167,9 +179,9 @@
     <div class="header-row">
       <div>
         ПОСТАВЩИК: Общество с ограниченной ответственностью "СЕРВИСТРАНСАВТО"<br>
-        ИНН 7723905004, КПП 772101001<br>
+        ИНН 7723905004, КПП 772101001, Код по ОКПО 29289257<br>
         111674, г. Москва, вн.тер.г. муниципальный округ Некрасовка, пр-кт Защитников Москвы<br>
-        тел.: +7 (929) 774-88-66, Код по ОКПО 29289257
+        тел.: +7 999 599 00 03
       </div>
       <div><strong>Дата:</strong> <span id="current-date">—</span></div>
     </div>
@@ -200,8 +212,8 @@
         <input type="text" id="master-name" placeholder="Иванов И.И.">
       </div>
       <div class="form-group">
-        <label>Сотрудник выезда</label>
-        <input type="text" id="field-agent" placeholder="Петров П.П.">
+        <label>ФИО клиента</label>
+        <input type="text" id="client-fio" placeholder="Иванов И.И.">
       </div>
       <div class="form-group">
         <label>Марка</label>
@@ -210,10 +222,6 @@
       <div class="form-group">
         <label>Гос. номер</label>
         <input type="text" id="license-plate" placeholder="А111ВВ77">
-      </div>
-      <div class="form-group">
-        <label>Телефон</label>
-        <input type="text" id="client-phone" placeholder="89123456789">
       </div>
       <div class="form-group">
         <label>Пробег (км)</label>
@@ -316,7 +324,10 @@
       { t: qty },
       { t: side },
       { t: pos },
-      ...(isPlanned ? [] : [{ t: price }, { t: total }]),
+      ...(isPlanned ? [] : [
+        { t: (price !== null ? price.toFixed(2) + ' ₽' : '') },
+        { t: (total !== null ? total.toFixed(2) + ' ₽' : '') }
+      ]),
       { h: `<button class="btn-delete" onclick="removeRow(this)">✕</button>` }
     ];
     cells.forEach(c => {
@@ -336,7 +347,9 @@
     const row = tbody.insertRow();
     const idx = partIndex++;
     const cells = [
-      { t: idx }, { t: art }, { t: name }, { t: qty }, { t: price }, { t: total },
+      { t: idx }, { t: art }, { t: name }, { t: qty },
+      { t: price.toFixed(2) + ' ₽' },
+      { t: total.toFixed(2) + ' ₽' },
       { h: `<button class="btn-delete" onclick="removeRow(this)">✕</button>` }
     ];
     cells.forEach(c => {
@@ -357,10 +370,10 @@
         company: document.getElementById('client-company').value || '—',
         contact: document.getElementById('client-contact').value || '—',
         master: document.getElementById('master-name').value || '—',
-        agent: document.getElementById('field-agent').value || '—',
+        clientFio: document.getElementById('client-fio').value || '—',
         brand: document.getElementById('vehicle-brand').value || '—',
         plate: document.getElementById('license-plate').value || '—',
-        phone: document.getElementById('client-phone').value || '—',
+        phone: '+7 999 599 00 03',
         mileage: (document.getElementById('mileage').value || '—') + ' км'
       },
       planned: getTableData('planned-table', false),
@@ -391,11 +404,29 @@
     document.querySelectorAll(`#${tableId} tbody tr`).forEach(row => {
       const c = row.cells;
       if (tableId === 'parts-table') {
-        rows.push({ art: c[1].textContent, name: c[2].textContent, qty: c[3].textContent, price: c[4].textContent, total: c[5].textContent });
+        rows.push({ 
+          art: c[1].textContent, 
+          name: c[2].textContent, 
+          qty: c[3].textContent, 
+          price: c[4].textContent.replace(' ₽', ''), 
+          total: c[5].textContent.replace(' ₽', '') 
+        });
       } else if (hasPrice) {
-        rows.push({ desc: c[1].textContent, qty: c[2].textContent, side: c[3].textContent, pos: c[4].textContent, price: c[5].textContent, total: c[6].textContent });
+        rows.push({ 
+          desc: c[1].textContent, 
+          qty: c[2].textContent, 
+          side: c[3].textContent, 
+          pos: c[4].textContent,
+          price: c[5].textContent.replace(' ₽', ''),
+          total: c[6].textContent.replace(' ₽', '')
+        });
       } else {
-        rows.push({ desc: c[1].textContent, qty: c[2].textContent, side: c[3].textContent, pos: c[4].textContent });
+        rows.push({ 
+          desc: c[1].textContent, 
+          qty: c[2].textContent, 
+          side: c[3].textContent, 
+          pos: c[4].textContent 
+        });
       }
     });
     return rows;
@@ -410,18 +441,12 @@
       return;
     }
 
-    // Сортировка: новые — вверху
     list.sort((a, b) => new Date(b.savedAt) - new Date(a.savedAt));
 
     list.forEach(item => {
+      const grandStr = (parseFloat(item.totals.grand) || 0).toFixed(2) + ' ₽';
       const div = document.createElement('div');
       div.className = 'archive-item';
-
-      // Форматируем итоги с рублями
-      const worksStr = (parseFloat(item.totals.works) || 0).toFixed(2) + ' ₽';
-      const partsStr = (parseFloat(item.totals.parts) || 0).toFixed(2) + ' ₽';
-      const grandStr = (parseFloat(item.totals.grand) || 0).toFixed(2) + ' ₽';
-
       div.innerHTML = `
         <div class="archive-header">
           <span>Заявка от ${item.header.date}</span>
@@ -429,8 +454,9 @@
         </div>
         <div class="archive-details">
           <span>Компания: ${item.header.company}</span>
-          <span>Итого: ${grandStr}</span>
+          <span>ФИО: ${item.header.clientFio}</span>
         </div>
+        <div>Итого: ${grandStr}</div>
         <div class="archive-actions">
           <button class="btn-sm" style="background:#17a2b8;" onclick="loadClaim(${item.id})">Редактировать</button>
           <button class="btn-sm" style="background:#28a745;" onclick="printClaimFromArchive(${item.id})">Печать</button>
@@ -455,10 +481,9 @@
     document.getElementById('client-company').value = item.header.company === '—' ? '' : item.header.company;
     document.getElementById('client-contact').value = item.header.contact === '—' ? '' : item.header.contact;
     document.getElementById('master-name').value = item.header.master === '—' ? '' : item.header.master;
-    document.getElementById('field-agent').value = item.header.agent === '—' ? '' : item.header.agent;
+    document.getElementById('client-fio').value = item.header.clientFio === '—' ? '' : item.header.clientFio;
     document.getElementById('vehicle-brand').value = item.header.brand === '—' ? '' : item.header.brand;
     document.getElementById('license-plate').value = item.header.plate === '—' ? '' : item.header.plate;
-    document.getElementById('client-phone').value = item.header.phone === '—' ? '' : item.header.phone;
     document.getElementById('mileage').value = item.header.mileage.replace(' км', '').replace('—', '');
 
     item.planned.forEach(row => {
@@ -525,25 +550,25 @@
     const c = document.getElementById('client-company').value || '—';
     const ct = document.getElementById('client-contact').value || '—';
     const m = document.getElementById('master-name').value || '—';
-    const a = document.getElementById('field-agent').value || '—';
+    const clientFio = document.getElementById('client-fio').value || '—';
     const b = document.getElementById('vehicle-brand').value || '—';
     const p = document.getElementById('license-plate').value || '—';
-    const ph = document.getElementById('client-phone').value || '—';
+    const ph = '+7 999 599 00 03';
     const mi = (document.getElementById('mileage').value || '—') + ' км';
 
     let works = 0, parts = 0;
     document.querySelectorAll('#actual-table tbody tr').forEach(row => {
-      works += parseFloat(row.cells[6]?.textContent) || 0;
+      works += parseFloat(row.cells[6]?.textContent.replace(' ₽', '')) || 0;
     });
     document.querySelectorAll('#parts-table tbody tr').forEach(row => {
-      parts += parseFloat(row.cells[5]?.textContent) || 0;
+      parts += parseFloat(row.cells[5]?.textContent.replace(' ₽', '')) || 0;
     });
     const grand = works + parts;
 
     let html = `
       <div style="font-family:Arial,sans-serif; padding:20px;">
         <div style="display:flex; justify-content:space-between; margin-bottom:12px; font-size:13px;">
-          <div><strong>ПОСТАВЩИК:</strong> ООО "СЕРВИСТРАНСАВТО"<br>ИНН 7723905004, КПП 772101001<br>111674, г. Москва, пр-кт Защитников Москвы<br>тел.: +7 (929) 774-88-66, Код по ОКПО 29289257</div>
+          <div><strong>ПОСТАВЩИК:</strong> ООО "СЕРВИСТРАНСАВТО"<br>ИНН 7723905004, КПП 772101001, Код по ОКПО 29289257<br>111674, г. Москва, пр-кт Защитников Москвы<br>тел.: ${ph}</div>
           <div><strong>Дата:</strong> ${d}</div>
         </div>
         <div style="text-align:center; font-weight:bold; margin:12px 0; font-size:18px;">ЗАЯВКА НА РЕМОНТ</div>
@@ -551,7 +576,7 @@
         <table style="width:100%; border-collapse:collapse; font-size:13px; margin-bottom:16px;">
           <tr><td style="padding:4px;">Номер наряда: ${n}</td><td style="padding:4px;">Дата: ${d}</td></tr>
           <tr><td style="padding:4px;">Компания: ${c}</td><td style="padding:4px;">Контакт: ${ct}</td></tr>
-          <tr><td style="padding:4px;">Мастер: ${m}</td><td style="padding:4px;">Сотрудник выезда: ${a}</td></tr>
+          <tr><td style="padding:4px;">Мастер: ${m}</td><td style="padding:4px;">ФИО клиента: ${clientFio}</td></tr>
           <tr><td style="padding:4px;">Марка: ${b}</td><td style="padding:4px;">Гос. номер: ${p}</td></tr>
           <tr><td style="padding:4px;">Телефон: ${ph}</td><td style="padding:4px;">Пробег: ${mi}</td></tr>
         </table>
@@ -568,19 +593,17 @@
         <div>Общая сумма: ${grand.toFixed(2)} ₽</div>
       </div>
 
-      <div style="margin-top:40px; font-size:14px;">
-        <table style="width:100%; border-collapse:collapse;">
-          <tr>
-            <td style="padding:4px; width:50%;">
-              <div>Мастер: _________________________</div>
-              <div style="margin-top:5px;">(${m})</div>
-            </td>
-            <td style="padding:4px; width:50%;">
-              <div>Печать организации:</div>
-              <div style="margin-top:25px; border-top:1px solid #000; width:80%;"></div>
-            </td>
-          </tr>
-        </table>
+      <div class="signature-line">
+        <div class="signature-block">
+          <p>Мастер: _________________________</p>
+          <p>(${m})</p>
+          <p style="margin-top:20px;">Печать организации:</p>
+          <div style="margin-top:5px; border-top:1px solid #000; width:80%;"></div>
+        </div>
+        <div>
+          <p style="margin-bottom:30px;">Подпись:</p>
+          <div style="border-top:1px solid #000; width:100px;"></div>
+        </div>
       </div>
     </div>
     `;
@@ -595,17 +618,17 @@
 
     let works = 0, parts = 0;
     document.querySelectorAll('#actual-table tbody tr').forEach(row => {
-      works += parseFloat(row.cells[6]?.textContent) || 0;
+      works += parseFloat(row.cells[6]?.textContent.replace(' ₽', '')) || 0;
     });
     document.querySelectorAll('#parts-table tbody tr').forEach(row => {
-      parts += parseFloat(row.cells[5]?.textContent) || 0;
+      parts += parseFloat(row.cells[5]?.textContent.replace(' ₽', '')) || 0;
     });
     const grand = works + parts;
 
     let html = `
       <div style="font-family:Arial,sans-serif; padding:20px;">
         <div style="display:flex; justify-content:space-between; margin-bottom:12px; font-size:13px;">
-          <div><strong>ПОСТАВЩИК:</strong> ООО "СЕРВИСТРАНСАВТО"<br>ИНН 7723905004, КПП 772101001<br>111674, г. Москва, пр-кт Защитников Москвы<br>тел.: +7 (929) 774-88-66, Код по ОКПО 29289257</div>
+          <div><strong>ПОСТАВЩИК:</strong> ООО "СЕРВИСТРАНСАВТО"<br>ИНН 7723905004, КПП 772101001, Код по ОКПО 29289257<br>111674, г. Москва, пр-кт Защитников Москвы<br>тел.: +7 999 599 00 03</div>
           <div><strong>Дата:</strong> ${d}</div>
         </div>
         <div style="text-align:center; font-weight:bold; margin:12px 0; font-size:18px;">ЗАКАЗ-НАРЯД №${n}</div>
@@ -621,19 +644,17 @@
         <div>Общая сумма: ${grand.toFixed(2)} ₽</div>
       </div>
 
-      <div style="margin-top:40px; font-size:14px;">
-        <table style="width:100%; border-collapse:collapse;">
-          <tr>
-            <td style="padding:4px; width:50%;">
-              <div>Мастер: _________________________</div>
-              <div style="margin-top:5px;">(${m})</div>
-            </td>
-            <td style="padding:4px; width:50%;">
-              <div>Печать организации:</div>
-              <div style="margin-top:25px; border-top:1px solid #000; width:80%;"></div>
-            </td>
-          </tr>
-        </table>
+      <div class="signature-line">
+        <div class="signature-block">
+          <p>Мастер: _________________________</p>
+          <p>(${m})</p>
+          <p style="margin-top:20px;">Печать организации:</p>
+          <div style="margin-top:5px; border-top:1px solid #000; width:80%;"></div>
+        </div>
+        <div>
+          <p style="margin-bottom:30px;">Подпись:</p>
+          <div style="border-top:1px solid #000; width:100px;"></div>
+        </div>
       </div>
     </div>
     `;
@@ -700,6 +721,8 @@
           body { font-family: Arial, sans-serif; padding: 20px; }
           table { width: 100%; border-collapse: collapse; margin: 10px 0; }
           th, td { text-align: left; padding: 6px; border-bottom: 1px solid #000; }
+          .signature-line { margin-top: 30px; display: flex; align-items: flex-end; gap: 30px; }
+          .signature-block { width: 50%; }
         </style>
       </head>
       <body>
@@ -720,24 +743,28 @@
     const company = document.getElementById('client-company').value || '';
     const contact = document.getElementById('client-contact').value || '';
     const master = document.getElementById('master-name').value || '';
-    const agent = document.getElementById('field-agent').value || '';
+    const clientFio = document.getElementById('client-fio').value || '';
     const brand = document.getElementById('vehicle-brand').value || '';
     const plate = document.getElementById('license-plate').value || '';
-    const phone = document.getElementById('client-phone').value || '';
+    const phone = '+7 999 599 00 03';
     const mileage = document.getElementById('mileage').value || '';
 
     let lines = [];
     document.querySelectorAll('#planned-table tbody tr').forEach(row => {
-      lines.push([order,date,company,contact,master,agent,brand,plate,phone,mileage,'Заявленная',row.cells[1].textContent,row.cells[2].textContent,row.cells[3].textContent,row.cells[4].textContent,'','','']);
+      lines.push([order,date,company,contact,master,clientFio,brand,plate,phone,mileage,'Заявленная',row.cells[1].textContent,row.cells[2].textContent,row.cells[3].textContent,row.cells[4].textContent,'','','']);
     });
     document.querySelectorAll('#actual-table tbody tr').forEach(row => {
-      lines.push([order,date,company,contact,master,agent,brand,plate,phone,mileage,'Выполненная',row.cells[1].textContent,row.cells[2].textContent,row.cells[3].textContent,row.cells[4].textContent,'',row.cells[5].textContent,row.cells[6].textContent]);
+      const price = row.cells[5].textContent.replace(' ₽', '');
+      const total = row.cells[6].textContent.replace(' ₽', '');
+      lines.push([order,date,company,contact,master,clientFio,brand,plate,phone,mileage,'Выполненная',row.cells[1].textContent,row.cells[2].textContent,row.cells[3].textContent,row.cells[4].textContent,'',price,total]);
     });
     document.querySelectorAll('#parts-table tbody tr').forEach(row => {
-      lines.push([order,date,company,contact,master,agent,brand,plate,phone,mileage,'Запчасть',row.cells[2].textContent,row.cells[3].textContent,'','',row.cells[1].textContent,row.cells[4].textContent,row.cells[5].textContent]);
+      const price = row.cells[4].textContent.replace(' ₽', '');
+      const total = row.cells[5].textContent.replace(' ₽', '');
+      lines.push([order,date,company,contact,master,clientFio,brand,plate,phone,mileage,'Запчасть',row.cells[2].textContent,row.cells[3].textContent,'','',row.cells[1].textContent,price,total]);
     });
 
-    const header = ['Номер наряда','Дата','Компания','Контакт','Мастер','Сотрудник выезда','Марка','Гос. номер','Телефон','Пробег (км)','Тип строки','Описание/Наименование','Кол-во','Сторона','Положение','Артикул','Цена','Сумма'];
+    const header = ['Номер наряда','Дата','Компания','Контакт','Мастер','ФИО клиента','Марка','Гос. номер','Телефон','Пробег (км)','Тип строки','Описание/Наименование','Кол-во','Сторона','Положение','Артикул','Цена','Сумма'];
     let csv = header.map(cell => `"${cell.replace(/"/g,'""')}"`).join(';') + '\n';
     lines.forEach(line => csv += line.map(cell => `"${(cell||'').toString().replace(/"/g,'""')}"`).join(';') + '\n');
 
