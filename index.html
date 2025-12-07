@@ -269,6 +269,8 @@
     <div class="no-print">
       <button class="btn" onclick="printClaim()">📄 Распечатать заявку на ремонт</button>
       <button class="btn" style="background:#28a745;" onclick="printOrder()">🖨️ Распечатать заказ-наряд</button>
+      <!-- Опционально: кнопка обновления архива -->
+      <button class="btn" onclick="loadArchiveFromGoogle()">🔄 Обновить архив</button>
     </div>
   </div>
 
@@ -286,17 +288,20 @@
   let workIndex = 1, actualIndex = 1, partIndex = 1;
   let lastSeq = parseInt(localStorage.getItem('lastClaimSeq') || '0');
 
-  // ✅ ТВОЙ ID GOOGLE ТАБЛИЦЫ — ВСТАВЛЕН
+  // ✅ ТВОЙ НОВЫЙ URL ОТ GOOGLE
+  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwwAR-DEmiHA19Wd5uhMTF4aCTm_viDWjhQiBNgxb5EpMa9pu8kEC8xeTKV3DwNtwzF3A/exec';
   const SHEET_ID = '18gp0Vm4XKYtScNIwp423XHlDuEx1Ne_sbcd1NSO0Bko';
 
-  init();
-
+  // ✅ ОБНОВЛЁННАЯ ФУНКЦИЯ INIT С АВТООБНОВЛЕНИЕМ
   function init() {
     const now = new Date();
     const d = `${String(now.getDate()).padStart(2, '0')}.${String(now.getMonth() + 1).padStart(2, '0')}.${now.getFullYear()}`;
     document.getElementById('current-date').textContent = d;
     generateOrderNumber();
     loadArchiveFromGoogle();
+
+    // Автообновление каждые 30 секунд
+    setInterval(loadArchiveFromGoogle, 30000);
   }
 
   function generateOrderNumber() {
@@ -381,6 +386,7 @@
 
   function removeRow(btn) { btn.closest('tr').remove(); }
 
+  // ✅ ОБНОВЛЁННАЯ ФУНКЦИЯ СОХРАНЕНИЯ
   function printClaim() {
     saveAndExport('zayavka');
     printDocument('claim');
@@ -434,19 +440,22 @@
     }
     localStorage.setItem(key, JSON.stringify(list));
 
-    // Отправка в Google
-    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyApt6AAyW6bPdBywlDA3Ud5Ci3ix5pGhzz1I5INjm9_5V064psnMLe_XYNpBH4CgCd_Q/exec';
+    // ✅ ОТПРАВКА В GOOGLE
     fetch(SCRIPT_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
-    }).catch(err => {
+    })
+    .then(response => response.text())
+    .then(text => {
+      console.log('Ответ от Google:', text);
+      autoExportToCSV(data, type);
+      loadArchiveFromGoogle();
+    })
+    .catch(err => {
       console.error('Ошибка отправки:', err);
+      alert('Не удалось отправить данные в облако. Проверьте интернет и повторите.');
     });
-
-    // Локальный CSV
-    autoExportToCSV(data, type);
-    loadArchiveFromGoogle();
   }
 
   function getTableData(tableId, hasPrice) {
@@ -482,7 +491,7 @@
     return rows;
   }
 
-  // === ЗАГРУЗКА АРХИВА ИЗ GOOGLE ТАБЛИЦЫ ===
+  // === ЗАГРУЗКА ИЗ GOOGLE ===
   function loadArchiveFromGoogle() {
     const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv`;
     
@@ -506,7 +515,7 @@
                 company: cols[2],
                 contact: cols[3],
                 master: cols[4],
-                clientFio: cols[5], // ← ФИО клиента!
+                clientFio: cols[5],
                 brand: cols[6],
                 plate: cols[7],
                 phone: cols[8],
