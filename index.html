@@ -167,15 +167,33 @@
       font-size: 16px;
       font-weight: bold;
     }
+    .user-info {
+      position: absolute;
+      top: 10px;
+      right: 20px;
+      background: #e9ecef;
+      padding: 6px 12px;
+      border-radius: 4px;
+      font-size: 13px;
+    }
+    .user-info button {
+      margin-left: 8px;
+      padding: 2px 8px;
+      font-size: 12px;
+      background: #6c757d;
+    }
   </style>
 
   <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 </head>
 <body>
 
 <div class="container">
+  <div class="user-info" id="user-info">Загрузка...</div>
+
   <div class="tabs">
     <button class="tab-btn active" onclick="switchTab('form')">Заявка на ремонт</button>
     <button class="tab-btn" onclick="switchTab('archive')">Архив</button>
@@ -186,8 +204,82 @@
     <!-- СКРЫТОЕ ПОЛЕ ДЛЯ ID -->
     <input type="hidden" id="claim-id">
 
-    <!-- ... (остальной HTML формы без изменений) ... -->
-    
+    <div class="header-row">
+      <div>Дата: <span id="current-date"></span></div>
+      <div>Номер заявки: <input type="text" id="order-number" readonly></div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Наименование организации клиента</label>
+        <input type="text" id="client-company" placeholder="ООО 'Пример'">
+      </div>
+      <div class="form-group">
+        <label>Контактное лицо</label>
+        <input type="text" id="contact-person" placeholder="Иван Иванов">
+      </div>
+      <div class="form-group">
+        <label>Телефон</label>
+        <input type="tel" id="phone" placeholder="+7 (XXX) XXX-XX-XX">
+      </div>
+    </div>
+
+    <h3>Данные автомобиля</h3>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Марка и модель</label>
+        <input type="text" id="car-model" placeholder="Mercedes-Benz Actros">
+      </div>
+      <div class="form-group">
+        <label>Госномер</label>
+        <input type="text" id="car-number" placeholder="А123БВ 77">
+      </div>
+      <div class="form-group">
+        <label>VIN</label>
+        <input type="text" id="vin" placeholder="WDB94400000000000">
+      </div>
+    </div>
+
+    <h3>Перечень работ</h3>
+    <table id="works-table">
+      <thead>
+        <tr>
+          <th>№</th>
+          <th>Наименование работы</th>
+          <th>Ед. изм.</th>
+          <th>Кол-во</th>
+          <th>Цена</th>
+          <th>Сумма</th>
+          <th>Действия</th>
+        </tr>
+      </thead>
+      <tbody id="works-body">
+        <!-- строки будут добавляться динамически -->
+      </tbody>
+    </table>
+    <button class="btn btn-sm" onclick="addWorkRow()">➕ Добавить работу</button>
+
+    <h3>Перечень запчастей</h3>
+    <table id="parts-table">
+      <thead>
+        <tr>
+          <th>№</th>
+          <th>Наименование запчасти</th>
+          <th>Ед. изм.</th>
+          <th>Кол-во</th>
+          <th>Цена</th>
+          <th>Сумма</th>
+          <th>Действия</th>
+        </tr>
+      </thead>
+      <tbody id="parts-body">
+        <!-- строки будут добавляться динамически -->
+      </tbody>
+    </table>
+    <button class="btn btn-sm" onclick="addPartRow()">➕ Добавить запчасть</button>
+
+    <div id="total-display">Общая сумма: 0.00 ₽</div>
+
     <div class="no-print">
       <button class="btn" onclick="printClaim()">📄 Распечатать заявку на ремонт</button>
     </div>
@@ -217,11 +309,40 @@
 
   firebase.initializeApp(firebaseConfig);
   const database = firebase.database();
+  const auth = firebase.auth();
 
   let workIndex = 1, actualIndex = 1, partIndex = 1;
   let lastSeq = parseInt(localStorage.getItem('lastClaimSeq') || '0');
+  let currentUser = null;
 
-  init();
+  // --- АВТОРИЗАЦИЯ ---
+  auth.onAuthStateChanged(user => {
+    if (user) {
+      currentUser = user;
+      document.getElementById('user-info').innerHTML = `
+        👤 ${user.displayName || user.email} 
+        <button onclick="signOut()">Выход</button>
+      `;
+      init();
+    } else {
+      document.getElementById('user-info').innerHTML = `
+        <button onclick="signInWithGoogle()">Войти через Google</button>
+      `;
+    }
+  });
+
+  function signInWithGoogle() {
+    const provider = new firebase.auth.GoogleAuthProvider();
+    auth.signInWithPopup(provider).catch(err => {
+      alert('Ошибка входа: ' + err.message);
+    });
+  }
+
+  function signOut() {
+    auth.signOut().then(() => {
+      window.location.reload();
+    });
+  }
 
   function init() {
     const now = new Date();
@@ -239,13 +360,151 @@
   }
 
   function resetForm() {
-    document.getElementById('claim-id').value = ''; // ← СБРОС ID
+    document.getElementById('claim-id').value = '';
     document.getElementById('client-company').value = '';
-    // ... (остальные поля) ...
-    document.getElementById('total-display').textContent = 'Общая сумма: 0.00 ₽';
+    document.getElementById('contact-person').value = '';
+    document.getElementById('phone').value = '';
+    document.getElementById('car-model').value = '';
+    document.getElementById('car-number').value = '';
+    document.getElementById('vin').value = '';
+
+    // Очистка таблиц
+    document.getElementById('works-body').innerHTML = '';
+    document.getElementById('parts-body').innerHTML = '';
+    workIndex = 1;
+    partIndex = 1;
+    calculateTotal();
   }
 
-  // --- ОСТАЛЬНЫЕ ФУНКЦИИ (addWorkRow, calculateTotal и т.д.) без изменений ---
+  function addWorkRow() {
+    const tbody = document.getElementById('works-body');
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td>${workIndex}</td>
+      <td><input type="text" placeholder="Замена масла" oninput="calculateTotal()" /></td>
+      <td><input type="text" value="шт." placeholder="шт." oninput="calculateTotal()" /></td>
+      <td><input type="number" value="1" min="1" oninput="calculateTotal()" /></td>
+      <td><input type="number" value="0" min="0" oninput="calculateTotal()" /></td>
+      <td class="sum-cell">0.00</td>
+      <td><button class="btn-delete" onclick="deleteRow(this)">🗑️</button></td>
+    `;
+    tbody.appendChild(row);
+    workIndex++;
+  }
+
+  function addPartRow() {
+    const tbody = document.getElementById('parts-body');
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td>${partIndex}</td>
+      <td><input type="text" placeholder="Фильтр масляный" oninput="calculateTotal()" /></td>
+      <td><input type="text" value="шт." placeholder="шт." oninput="calculateTotal()" /></td>
+      <td><input type="number" value="1" min="1" oninput="calculateTotal()" /></td>
+      <td><input type="number" value="0" min="0" oninput="calculateTotal()" /></td>
+      <td class="sum-cell">0.00</td>
+      <td><button class="btn-delete" onclick="deleteRow(this)">🗑️</button></td>
+    `;
+    tbody.appendChild(row);
+    partIndex++;
+  }
+
+  function deleteRow(button) {
+    button.closest('tr').remove();
+    calculateTotal();
+  }
+
+  function calculateTotal() {
+    let total = 0;
+
+    // Работы
+    Array.from(document.querySelectorAll('#works-body tr')).forEach(row => {
+      const qty = parseFloat(row.querySelector('input:nth-child(4)').value) || 0;
+      const price = parseFloat(row.querySelector('input:nth-child(5)').value) || 0;
+      const sum = qty * price;
+      row.querySelector('.sum-cell').textContent = sum.toFixed(2);
+      total += sum;
+    });
+
+    // Запчасти
+    Array.from(document.querySelectorAll('#parts-body tr')).forEach(row => {
+      const qty = parseFloat(row.querySelector('input:nth-child(4)').value) || 0;
+      const price = parseFloat(row.querySelector('input:nth-child(5)').value) || 0;
+      const sum = qty * price;
+      row.querySelector('.sum-cell').textContent = sum.toFixed(2);
+      total += sum;
+    });
+
+    document.getElementById('total-display').textContent = `Общая сумма: ${total.toFixed(2)} ₽`;
+  }
+
+  function prepareData(status) {
+    const order = document.getElementById('order-number').value;
+    const clientCompany = document.getElementById('client-company').value;
+    const contactPerson = document.getElementById('contact-person').value;
+    const phone = document.getElementById('phone').value;
+    const carModel = document.getElementById('car-model').value;
+    const carNumber = document.getElementById('car-number').value;
+    const vin = document.getElementById('vin').value;
+
+    if (!order || !clientCompany || !contactPerson || !phone || !carModel) {
+      alert('Заполните обязательные поля!');
+      return null;
+    }
+
+    const works = [];
+    Array.from(document.querySelectorAll('#works-body tr')).forEach((row, i) => {
+      const name = row.querySelector('input:nth-child(2)').value;
+      const unit = row.querySelector('input:nth-child(3)').value;
+      const qty = parseFloat(row.querySelector('input:nth-child(4)').value) || 0;
+      const price = parseFloat(row.querySelector('input:nth-child(5)').value) || 0;
+      if (name && qty > 0) {
+        works.push({
+          id: i + 1,
+          name,
+          unit,
+          qty,
+          price,
+          sum: qty * price
+        });
+      }
+    });
+
+    const parts = [];
+    Array.from(document.querySelectorAll('#parts-body tr')).forEach((row, i) => {
+      const name = row.querySelector('input:nth-child(2)').value;
+      const unit = row.querySelector('input:nth-child(3)').value;
+      const qty = parseFloat(row.querySelector('input:nth-child(4)').value) || 0;
+      const price = parseFloat(row.querySelector('input:nth-child(5)').value) || 0;
+      if (name && qty > 0) {
+        parts.push({
+          id: i + 1,
+          name,
+          unit,
+          qty,
+          price,
+          sum: qty * price
+        });
+      }
+    });
+
+    return {
+      header: {
+        order,
+        date: document.getElementById('current-date').textContent,
+        clientCompany,
+        contactPerson,
+        phone,
+        carModel,
+        carNumber,
+        vin,
+        status: status || 'zayavka',
+        userId: currentUser ? currentUser.uid : 'anonymous'
+      },
+      works,
+      parts,
+      total: parseFloat(document.getElementById('total-display').textContent.replace(/[^0-9.-]/g, '')) || 0
+    };
+  }
 
   function printClaim() {
     const data = prepareData('zayavka');
@@ -259,25 +518,34 @@
   function saveOrUpdateClaim(data) {
     const claimId = document.getElementById('claim-id').value;
     let ref;
+    
     if (claimId) {
       // Обновляем существующую
       ref = database.ref('claims/' + claimId);
     } else {
-      // Создаём новую
-      ref = database.ref('claims').push();
-      // Сохраняем ID в данных
-      data.id = ref.key;
+      // Проверяем, нет ли уже такой заявки по номеру
+      database.ref('claims').orderByChild('header/order').equalTo(data.header.order).once('value')
+        .then(snapshot => {
+          if (snapshot.exists()) {
+            alert(`⚠️ Заявка №${data.header.order} уже существует!`);
+            return;
+          }
+
+          // Создаём новую
+          ref = database.ref('claims').push();
+          data.id = ref.key;
+          
+          ref.set(data)
+            .then(() => {
+              exportTo1C(data);
+              alert(`✅ Заявка №${data.header.order} сохранена!`);
+            })
+            .catch(err => {
+              alert('❌ Ошибка синхронизации. Данные сохранены локально.');
+              exportTo1C(data);
+            });
+        });
     }
-    
-    ref.set(data)
-      .then(() => {
-        exportTo1C(data);
-        alert(`✅ Заявка №${data.header.order} ${claimId ? 'обновлена' : 'сохранена'}!`);
-      })
-      .catch(err => {
-        alert('Ошибка синхронизации. Данные сохранены локально.');
-        exportTo1C(data);
-      });
   }
 
   function loadClaim(orderId) {
@@ -291,6 +559,46 @@
     document.getElementById('claim-id').value = item.id;
     
     // ... (заполняем остальные поля) ...
+    document.getElementById('client-company').value = item.header.clientCompany;
+    document.getElementById('contact-person').value = item.header.contactPerson;
+    document.getElementById('phone').value = item.header.phone;
+    document.getElementById('car-model').value = item.header.carModel;
+    document.getElementById('car-number').value = item.header.carNumber;
+    document.getElementById('vin').value = item.header.vin;
+
+    // Очистка таблиц
+    document.getElementById('works-body').innerHTML = '';
+    document.getElementById('parts-body').innerHTML = '';
+
+    // Заполнение работ
+    item.works.forEach(work => {
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td>${work.id}</td>
+        <td><input type="text" value="${work.name}" oninput="calculateTotal()" /></td>
+        <td><input type="text" value="${work.unit}" oninput="calculateTotal()" /></td>
+        <td><input type="number" value="${work.qty}" min="1" oninput="calculateTotal()" /></td>
+        <td><input type="number" value="${work.price}" min="0" oninput="calculateTotal()" /></td>
+        <td class="sum-cell">${work.sum.toFixed(2)}</td>
+        <td><button class="btn-delete" onclick="deleteRow(this)">🗑️</button></td>
+      `;
+      document.getElementById('works-body').appendChild(row);
+    });
+
+    // Заполнение запчастей
+    item.parts.forEach(part => {
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td>${part.id}</td>
+        <td><input type="text" value="${part.name}" oninput="calculateTotal()" /></td>
+        <td><input type="text" value="${part.unit}" oninput="calculateTotal()" /></td>
+        <td><input type="number" value="${part.qty}" min="1" oninput="calculateTotal()" /></td>
+        <td><input type="number" value="${part.price}" min="0" oninput="calculateTotal()" /></td>
+        <td class="sum-cell">${part.sum.toFixed(2)}</td>
+        <td><button class="btn-delete" onclick="deleteRow(this)">🗑️</button></td>
+      `;
+      document.getElementById('parts-body').appendChild(row);
+    });
 
     calculateTotal();
   }
@@ -310,905 +618,148 @@
     }
   }
 
-  // --- ОСТАЛЬНЫЙ КОД (renderArchive, exportTo1C и т.д.) без изменений ---
-</script>
+  function renderArchive() {
+    const archiveList = document.getElementById('archive-list');
+    archiveList.innerHTML = '';
 
-</body>
-</html>      padding: 8px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin: 12px 0;
-      font-size: 13px;
-    }
-    th, td {
-      text-align: left;
-      padding: 8px 6px;
-      border-bottom: 1px solid var(--border);
-    }
-    thead th {
-      font-weight: 600;
-      background: #f8f9fa;
-    }
-    .preview-table th, .preview-table td {
-      border: none;
-      border-bottom: 1px solid #000;
-    }
-    .btn {
-      padding: 8px 16px;
-      background: var(--primary);
-      color: white;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 15px;
-      font-weight: bold;
-      margin: 5px;
-    }
-    .btn-sm { padding: 4px 8px; font-size: 12px; }
-    .btn-delete { background: var(--danger); padding: 2px 6px; font-size: 12px; }
-    .no-print {
-      display: block;
-      text-align: center;
-      margin-top: 10px;
-    }
-    .tabs {
-      display: flex;
-      gap: 10px;
-      margin-bottom: 20px;
-    }
-    .tab-btn {
-      padding: 8px 16px;
-      background: #e9ecef;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-    .tab-btn.active {
-      background: var(--primary);
-      color: white;
-    }
-    .tab-content { display: none; }
-    .tab-content.active { display: block; }
-    .archive-list {
-      display: grid;
-      gap: 12px;
-      margin-top: 10px;
-    }
-    .archive-item {
-      padding: 14px;
-      border: 1px solid #ddd;
-      border-radius: 8px;
-      background: #fafafa;
-      font-size: 14px;
-    }
-    .archive-date-header {
-      background: #e9ecef;
-      padding: 8px 12px;
-      border-radius: 6px;
-      font-weight: bold;
-      margin-top: 20px;
-    }
-    .archive-status {
-      display: inline-block;
-      padding: 2px 6px;
-      border-radius: 4px;
-      font-size: 12px;
-      margin-left: 8px;
-    }
-    .status-zayavka { background: #d1ecf1; color: #0c5460; }
-    .status-zakaz { background: #d4edda; color: #155724; }
-    .archive-actions {
-      margin-top: 10px;
-      text-align: right;
-    }
-    .signature-line {
-      margin-top: 30px;
-      display: flex;
-      align-items: flex-end;
-      gap: 30px;
-    }
-    .signature-block {
-      width: 50%;
-    }
-    #total-display {
-      margin-top: 12px;
-      text-align: right;
-      font-size: 16px;
-      font-weight: bold;
-    }
-  </style>
-
-  <!-- Firebase -->
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-</head>
-<body>
-
-<div class="container">
-  <div class="tabs">
-    <button class="tab-btn active" onclick="switchTab('form')">Заявка на ремонт</button>
-    <button class="tab-btn" onclick="switchTab('archive')">Архив</button>
-  </div>
-
-  <!-- === ФОРМА === -->
-  <div id="form-tab" class="tab-content active">
-    <div class="header-row">
-      <div>
-        ПОСТАВЩИК: Общество с ограниченной ответственностью "СЕРВИСТРАНСАВТО"<br>
-        ИНН 7723905004, КПП 772101001, Код по ОКПО 29289257<br>
-        111674, г. Москва, вн.тер.г. муниципальный округ Некрасовка, пр-кт Защитников Москвы<br>
-        тел.: +7 999 599 00 03
-      </div>
-      <div><strong>Дата:</strong> <span id="current-date">—</span></div>
-    </div>
-
-    <h2>Заявка на ремонт</h2>
-
-    <div class="form-row">
-      <div class="form-group">
-        <label>Номер наряда</label>
-        <input type="text" id="order-number" readonly>
-      </div>
-    </div>
-
-    <div class="form-row">
-      <div class="form-group">
-        <label>Компания клиента</label>
-        <input type="text" id="client-company" placeholder="ООО / ИП / ФИО клиента">
-      </div>
-      <div class="form-group">
-        <label>Контакт</label>
-        <input type="text" id="client-contact" placeholder="Контактное лицо / телефон">
-      </div>
-    </div>
-
-    <div class="form-row">
-      <div class="form-group">
-        <label>Мастер</label>
-        <input type="text" id="master-name" placeholder="Иванов И.И.">
-      </div>
-      <div class="form-group">
-        <label>ФИО клиента</label>
-        <input type="text" id="client-fio" placeholder="Иванов И.И.">
-      </div>
-      <div class="form-group">
-        <label>Марка</label>
-        <input type="text" id="vehicle-brand" placeholder="ГАЗель, Ford Transit...">
-      </div>
-      <div class="form-group">
-        <label>Гос. номер</label>
-        <input type="text" id="license-plate" placeholder="А111ВВ77">
-      </div>
-      <div class="form-group">
-        <label>Пробег (км)</label>
-        <input type="number" id="mileage" placeholder="123456">
-      </div>
-    </div>
-
-    <h3>Заявка на работы</h3>
-    <div class="form-row">
-      <input type="text" placeholder="Описание" id="work-desc1" style="flex:2;">
-      <input type="number" placeholder="Кол-во" id="work-qty1" value="1" min="1" style="width:80px;">
-      <select id="work-side1" style="width:100px;"><option>—</option><option>Левая</option><option>Правая</option></select>
-      <select id="work-pos1" style="width:100px;"><option>—</option><option>Верх</option><option>Низ</option></select>
-      <button class="btn-sm" onclick="addWorkRow('planned')">+ Добавить</button>
-    </div>
-    <table id="planned-table">
-      <thead><tr><th>№</th><th>Описание</th><th>Кол-во</th><th>Сторона</th><th>Положение</th><th></th></tr></thead>
-      <tbody></tbody>
-    </table>
-
-    <h3>Выполненные работы</h3>
-    <div class="form-row">
-      <input type="text" placeholder="Описание" id="work-desc2" style="flex:2;">
-      <input type="number" placeholder="Кол-во" id="work-qty2" value="1" min="1" style="width:80px;">
-      <select id="work-side2" style="width:100px;"><option>—</option><option>Левая</option><option>Правая</option></select>
-      <select id="work-pos2" style="width:100px;"><option>—</option><option>Верх</option><option>Низ</option></select>
-      <input type="number" placeholder="Цена" id="work-price2" style="width:100px;" oninput="calculateTotal()">
-      <button class="btn-sm" onclick="addWorkRow('actual')">+ Добавить</button>
-    </div>
-    <table id="actual-table">
-      <thead><tr><th>№</th><th>Описание</th><th>Кол-во</th><th>Сторона</th><th>Положение</th><th>Цена</th><th>Сумма</th><th></th></tr></thead>
-      <tbody></tbody>
-    </table>
-
-    <h3>Запчасти</h3>
-    <div class="form-row">
-      <input type="text" placeholder="Артикул" id="part-art" style="width:120px;">
-      <input type="text" placeholder="Наименование" id="part-name" style="flex:2;">
-      <input type="number" placeholder="Кол-во" id="part-qty" value="1" min="1" style="width:80px;" oninput="calculateTotal()">
-      <input type="number" placeholder="Цена" id="part-price" style="width:100px;" oninput="calculateTotal()">
-      <button class="btn-sm" onclick="addPartRow()">+ Добавить</button>
-    </div>
-    <table id="parts-table">
-      <thead><tr><th>№</th><th>Артикул</th><th>Наименование</th><th>Кол-во</th><th>Цена</th><th>Сумма</th><th></th></tr></thead>
-      <tbody></tbody>
-    </table>
-
-    <!-- ✅ ИТОГОВАЯ СУММА -->
-    <div id="total-display">Общая сумма: 0.00 ₽</div>
-
-    <div class="no-print">
-      <button class="btn" onclick="printClaim()">📄 Распечатать заявку на ремонт</button>
-      <!-- Кнопка "Распечатать заказ-наряд" УДАЛЕНА -->
-    </div>
-  </div>
-
-  <!-- === АРХИВ === -->
-  <div id="archive-tab" class="tab-content">
-    <h2>Архив заявок</h2>
-    <div id="archive-list" class="archive-list"></div>
-    <div class="no-print" style="margin-top:20px;">
-      <button class="btn btn-archive" style="background:#6c757d;" onclick="switchTab('form')">← Заявка на ремонт</button>
-    </div>
-  </div>
-</div>
-
-<script>
-  // === ИНИЦИАЛИЗАЦИЯ FIREBASE ===
-  const firebaseConfig = {
-    apiKey: "AIzaSyDixYVempEv1EIehC_oSMI98stT61deZ6Y",
-    authDomain: "servistransavto-danik.firebaseapp.com",
-    databaseURL: "https://servistransavto-danik-default-rtdb.firebaseio.com",
-    projectId: "servistransavto-danik",
-    storageBucket: "servistransavto-danik.firebasestorage.app",
-    messagingSenderId: "770451755248",
-    appId: "1:770451755248:web:94874fca1cb9843945f235"
-  };
-
-  firebase.initializeApp(firebaseConfig);
-  const database = firebase.database();
-
-  let workIndex = 1, actualIndex = 1, partIndex = 1;
-  let lastSeq = parseInt(localStorage.getItem('lastClaimSeq') || '0');
-  let currentOrderId = null;
-
-  init();
-
-  function init() {
-    const now = new Date();
-    const d = `${String(now.getDate()).padStart(2, '0')}.${String(now.getMonth() + 1).padStart(2, '0')}.${now.getFullYear()}`;
-    document.getElementById('current-date').textContent = d;
-    generateOrderNumber();
-    loadFromFirebase();
-    setInterval(loadFromFirebase, 10000);
-  }
-
-  function generateOrderNumber() {
-    lastSeq++;
-    localStorage.setItem('lastClaimSeq', lastSeq.toString());
-    document.getElementById('order-number').value = `СТА-${new Date().getFullYear()}-${String(lastSeq).padStart(3, '0')}`;
-  }
-
-  function resetForm() {
-    document.getElementById('client-company').value = '';
-    document.getElementById('client-contact').value = '';
-    document.getElementById('master-name').value = '';
-    document.getElementById('client-fio').value = '';
-    document.getElementById('vehicle-brand').value = '';
-    document.getElementById('license-plate').value = '';
-    document.getElementById('mileage').value = '';
-    
-    document.getElementById('planned-table').getElementsByTagName('tbody')[0].innerHTML = '';
-    document.getElementById('actual-table').getElementsByTagName('tbody')[0].innerHTML = '';
-    document.getElementById('parts-table').getElementsByTagName('tbody')[0].innerHTML = '';
-    
-    workIndex = 1; actualIndex = 1; partIndex = 1;
-    
-    const now = new Date();
-    const d = `${String(now.getDate()).padStart(2, '0')}.${String(now.getMonth() + 1).padStart(2, '0')}.${now.getFullYear()}`;
-    document.getElementById('current-date').textContent = d;
-    generateOrderNumber();
-    currentOrderId = null;
-    document.getElementById('total-display').textContent = 'Общая сумма: 0.00 ₽';
-  }
-
-  function addWorkRow(type) {
-    const isPlanned = type === 'planned';
-    const desc = (isPlanned ? document.getElementById('work-desc1') : document.getElementById('work-desc2')).value || '—';
-    const qty = (isPlanned ? document.getElementById('work-qty1') : document.getElementById('work-qty2')).value || 1;
-    const side = (isPlanned ? document.getElementById('work-side1') : document.getElementById('work-side2')).value || '—';
-    const pos = (isPlanned ? document.getElementById('work-pos1') : document.getElementById('work-pos2')).value || '—';
-    const price = isPlanned ? null : parseFloat(document.getElementById('work-price2').value) || 0;
-    const total = isPlanned ? null : qty * price;
-    const tbody = document.querySelector(`#${type}-table tbody`);
-    const row = tbody.insertRow();
-    const idx = isPlanned ? workIndex++ : actualIndex++;
-    const cells = [
-      { t: idx },
-      { t: desc },
-      { t: qty },
-      { t: side },
-      { t: pos },
-      ...(isPlanned ? [] : [{ t: price !== null ? price.toFixed(2) + ' ₽' : '' }, { t: total !== null ? total.toFixed(2) + ' ₽' : '' }]),
-      { h: `<button class="btn-delete" onclick="removeRow(this)">✕</button>` }
-    ];
-    cells.forEach(c => {
-      const td = document.createElement('td');
-      td[c.h ? 'innerHTML' : 'textContent'] = c.t || c.h;
-      row.appendChild(td);
-    });
-    calculateTotal(); // Пересчитываем сумму
-  }
-
-  function addPartRow() {
-    const art = document.getElementById('part-art').value || '—';
-    const name = document.getElementById('part-name').value || '—';
-    const qty = document.getElementById('part-qty').value || 1;
-    const price = parseFloat(document.getElementById('part-price').value) || 0;
-    const total = qty * price;
-    const tbody = document.querySelector('#parts-table tbody');
-    const row = tbody.insertRow();
-    const idx = partIndex++;
-    const cells = [
-      { t: idx }, { t: art }, { t: name }, { t: qty },
-      { t: price.toFixed(2) + ' ₽' },
-      { t: total.toFixed(2) + ' ₽' },
-      { h: `<button class="btn-delete" onclick="removeRow(this)">✕</button>` }
-    ];
-    cells.forEach(c => {
-      const td = document.createElement('td');
-      td[c.h ? 'innerHTML' : 'textContent'] = c.t || c.h;
-      row.appendChild(td);
-    });
-    calculateTotal(); // Пересчитываем сумму
-  }
-
-  function removeRow(btn) { 
-    btn.closest('tr').remove(); 
-    calculateTotal(); // Пересчитываем сумму
-  }
-
-  // === РАСЧЁТ ОБЩЕЙ СУММЫ ===
-  function calculateTotal() {
-    let works = 0, parts = 0;
-    document.querySelectorAll('#actual-table tbody tr').forEach(row => {
-      const price = parseFloat(row.cells[5]?.textContent.replace(' ₽', '')) || 0;
-      const qty = parseFloat(row.cells[2]?.textContent) || 0;
-      const total = price * qty;
-      row.cells[6].textContent = total.toFixed(2) + ' ₽';
-      works += total;
-    });
-    document.querySelectorAll('#parts-table tbody tr').forEach(row => {
-      const price = parseFloat(row.cells[4]?.textContent.replace(' ₽', '')) || 0;
-      const qty = parseFloat(row.cells[3]?.textContent) || 0;
-      const total = price * qty;
-      row.cells[5].textContent = total.toFixed(2) + ' ₽';
-      parts += total;
-    });
-    const grand = works + parts;
-    document.getElementById('total-display').textContent = `Общая сумма: ${grand.toFixed(2)} ₽`;
-  }
-
-  // === ОСНОВНАЯ ФУНКЦИЯ: ПЕЧАТЬ ЗАЯВКИ + СОХРАНЕНИЕ ===
-  function printClaim() {
-    const data = prepareData('zayavka');
-    if (!data) return;
-
-    saveOrUpdateClaim(data);
-    printClaimDocument();
-    resetForm(); // Очищаем форму после печати
-  }
-
-  function saveOrUpdateClaim(data) {
-    if (currentOrderId) {
-      // Если мы редактируем существующую заявку — обновляем её
-      database.ref('claims/' + currentOrderId).set(data)
-        .then(() => {
-          console.log('Заявка обновлена');
-          exportTo1C(data);
-          alert(`✅ Заявка №${data.header.order} обновлена!`);
-        })
-        .catch(err => {
-          console.error('Ошибка обновления:', err);
-          alert('Ошибка синхронизации. Данные сохранены локально.');
-          exportTo1C(data);
-        });
-    } else {
-      // Если это новая заявка — создаём её
-      const newClaimRef = database.ref('claims').push();
-      newClaimRef.set(data)
-        .then(() => {
-          console.log('Успешно сохранено в Firebase');
-          exportTo1C(data);
-          alert(`✅ Заявка №${data.header.order} сохранена!`);
-        })
-        .catch(err => {
-          console.error('Ошибка Firebase:', err);
-          alert('Ошибка синхронизации. Данные сохранены локально.');
-          exportTo1C(data);
-        });
-    }
-  }
-
-  function prepareData(type) {
-    const order = document.getElementById('order-number').value;
-    const company = document.getElementById('client-company').value;
-    const master = document.getElementById('master-name').value;
-    const clientFio = document.getElementById('client-fio').value;
-
-    if (!order || !company || !master || !clientFio) {
-      alert('Заполните обязательные поля: Номер, Компания, Мастер, ФИО клиента');
-      return null;
-    }
-
-    let works = 0, parts = 0;
-    document.querySelectorAll('#actual-table tbody tr').forEach(row => {
-      const price = parseFloat(row.cells[5]?.textContent.replace(' ₽', '')) || 0;
-      const qty = parseFloat(row.cells[2]?.textContent) || 0;
-      const total = price * qty;
-      works += total;
-    });
-    document.querySelectorAll('#parts-table tbody tr').forEach(row => {
-      const price = parseFloat(row.cells[4]?.textContent.replace(' ₽', '')) || 0;
-      const qty = parseFloat(row.cells[3]?.textContent) || 0;
-      const total = price * qty;
-      parts += total;
-    });
-    const grand = works + parts;
-
-    return {
-      id: Date.now(),
-      header: {
-        order: order,
-        date: document.getElementById('current-date').textContent,
-        company: company || '—',
-        contact: document.getElementById('client-contact').value || '—',
-        master: master || '—',
-        clientFio: clientFio || '—',
-        brand: document.getElementById('vehicle-brand').value || '—',
-        plate: document.getElementById('license-plate').value || '—',
-        phone: '+7 999 599 00 03',
-        mileage: (document.getElementById('mileage').value || '—') + ' км'
-      },
-      planned: getTableData('planned-table', false),
-      actual: getTableData('actual-table', true),
-      parts: getTableData('parts-table', true),
-      savedAt: new Date().toISOString(),
-      status: type,
-      totals: {
-        works: works,
-        parts: parts,
-        grand: grand
-      }
-    };
-  }
-
-  function getTableData(tableId, hasPrice) {
-    const rows = [];
-    document.querySelectorAll(`#${tableId} tbody tr`).forEach(row => {
-      const c = row.cells;
-      if (tableId === 'parts-table') {
-        rows.push({ art: c[1].textContent, name: c[2].textContent, qty: c[3].textContent, price: c[4].textContent.replace(' ₽', ''), total: c[5].textContent.replace(' ₽', '') });
-      } else if (hasPrice) {
-        rows.push({ desc: c[1].textContent, qty: c[2].textContent, side: c[3].textContent, pos: c[4].textContent, price: c[5].textContent.replace(' ₽', ''), total: c[6].textContent.replace(' ₽', '') });
-      } else {
-        rows.push({ desc: c[1].textContent, qty: c[2].textContent, side: c[3].textContent, pos: c[4].textContent });
-      }
-    });
-    return rows;
-  }
-
-  function loadFromFirebase() {
-    database.ref('claims').once('value')
+    database.ref('claims').orderByChild('header/date').once('value')
       .then(snapshot => {
-        const list = [];
-        snapshot.forEach(child => {
-          list.push(child.val());
+        const claims = [];
+        snapshot.forEach(childSnapshot => {
+          claims.push({ id: childSnapshot.key, ...childSnapshot.val() });
         });
-        renderArchive(list);
-        localStorage.setItem('claims', JSON.stringify(list));
+
+        // Группировка по дате
+        const grouped = {};
+        claims.forEach(claim => {
+          const date = claim.header.date.split('.')[2]; // год
+          if (!grouped[date]) grouped[date] = [];
+          grouped[date].push(claim);
+        });
+
+        for (const year in grouped) {
+          const yearDiv = document.createElement('div');
+          yearDiv.className = 'archive-date-header';
+          yearDiv.textContent = `📅 ${year}`;
+          archiveList.appendChild(yearDiv);
+
+          grouped[year].forEach(claim => {
+            const item = document.createElement('div');
+            item.className = 'archive-item';
+            item.innerHTML = `
+              <strong>№${claim.header.order}</strong> — ${claim.header.clientCompany}
+              <br>Автомобиль: ${claim.header.carModel} (${claim.header.carNumber})
+              <br>Дата: ${claim.header.date}
+              <div class="archive-status status-${claim.header.status}">
+                ${claim.header.status === 'zayavka' ? 'Заявка' : 'Заказ'}
+              </div>
+              <div class="archive-actions">
+                <button class="btn-sm" onclick="loadClaim('${claim.header.order}')">✏️ Редактировать</button>
+                <button class="btn-sm btn-delete" onclick="deleteClaim('${claim.id}')">🗑️ Удалить</button>
+              </div>
+            `;
+            archiveList.appendChild(item);
+          });
+        }
       })
       .catch(err => {
-        const localList = JSON.parse(localStorage.getItem('claims') || '[]');
-        renderArchive(localList);
+        archiveList.innerHTML = '<p>Ошибка загрузки архива.</p>';
       });
   }
 
-  function renderArchive(list) {
-    const container = document.getElementById('archive-list');
-    container.innerHTML = '';
-    if (list.length === 0) {
-      container.innerHTML = '<div style="text-align:center; color:#666;">Архив пуст</div>';
-      return;
-    }
+  function deleteClaim(id) {
+    if (!confirm('Удалить заявку? Это действие нельзя отменить.')) return;
 
-    list.sort((a, b) => new Date(b.savedAt) - new Date(a.savedAt));
-
-    const groups = {};
-    list.forEach(item => {
-      const dateKey = item.header.date;
-      if (!groups[dateKey]) groups[dateKey] = [];
-      groups[dateKey].push(item);
-    });
-
-    Object.keys(groups).forEach(date => {
-      const dateDiv = document.createElement('div');
-      dateDiv.className = 'archive-date-header';
-      dateDiv.textContent = date;
-      container.appendChild(dateDiv);
-
-      groups[date].forEach(item => {
-        const grandStr = (parseFloat(item.totals?.grand) || 0).toFixed(2) + ' ₽';
-        const statusClass = item.status === 'zakaz-naryad' ? 'status-zakaz' : 'status-zayavka';
-        const statusText = item.status === 'zakaz-naryad' ? 'Заказ-наряд' : 'Заявка';
-        
-        const div = document.createElement('div');
-        div.className = 'archive-item';
-        div.innerHTML = `
-          <div>
-            Заявка №: ${item.header.order}
-            <span class="archive-status ${statusClass}">${statusText}</span>
-          </div>
-          <div>Компания: ${item.header.company}</div>
-          <div>ФИО клиента: ${item.header.clientFio}</div>
-          <div>Итого: ${grandStr}</div>
-          <div class="archive-actions">
-            ${item.status === 'zayavka' ? 
-              `<button class="btn-sm" style="background:#28a745;" onclick="printOrderFromArchive('${item.header.order}')">Распечатать заказ-наряд</button>` : 
-              `<button class="btn-sm" style="background:#6c757d;" disabled>Закрыто</button>`}
-            <button class="btn-sm" style="background:#17a2b8;" onclick="loadClaim('${item.header.order}')">Редактировать</button>
-            <button class="btn-sm" style="background:#28a745;" onclick="printClaimFromArchive('${item.header.order}')">Печать</button>
-          </div>
-        `;
-        container.appendChild(div);
+    database.ref('claims/' + id).remove()
+      .then(() => {
+        alert('✅ Заявка удалена.');
+        renderArchive();
+      })
+      .catch(err => {
+        alert('❌ Ошибка удаления.');
       });
-    });
-  }
-
-  function loadClaim(orderId) {
-    const list = JSON.parse(localStorage.getItem('claims') || '[]');
-    const item = list.find(x => x.header.order === orderId);
-    if (!item) return;
-
-    switchTab('form'); // Переходим на форму
-    ['planned-table', 'actual-table', 'parts-table'].forEach(id => {
-      document.querySelector(`#${id} tbody`).innerHTML = '';
-    });
-    workIndex = 1; actualIndex = 1; partIndex = 1;
-    lastSeq = parseInt(item.header.order.split('-')[2]) - 1;
-
-    document.getElementById('order-number').value = item.header.order;
-    document.getElementById('client-company').value = item.header.company === '—' ? '' : item.header.company;
-    document.getElementById('client-contact').value = item.header.contact === '—' ? '' : item.header.contact;
-    document.getElementById('master-name').value = item.header.master === '—' ? '' : item.header.master;
-    document.getElementById('client-fio').value = item.header.clientFio === '—' ? '' : item.header.clientFio;
-    document.getElementById('vehicle-brand').value = item.header.brand === '—' ? '' : item.header.brand;
-    document.getElementById('license-plate').value = item.header.plate === '—' ? '' : item.header.plate;
-    document.getElementById('mileage').value = item.header.mileage.replace(' км', '').replace('—', '');
-
-    item.planned.forEach(row => {
-      const tr = document.querySelector('#planned-table tbody').insertRow();
-      const idx = workIndex++;
-      const cells = [
-        { t: idx }, { t: row.desc }, { t: row.qty }, { t: row.side }, { t: row.pos },
-        { h: `<button class="btn-delete" onclick="removeRow(this)">✕</button>` }
-      ];
-      cells.forEach(c => {
-        const td = document.createElement('td');
-        td[c.h ? 'innerHTML' : 'textContent'] = c.t || c.h;
-        tr.appendChild(td);
-      });
-    });
-
-    item.actual.forEach(row => {
-      const tr = document.querySelector('#actual-table tbody').insertRow();
-      const idx = actualIndex++;
-      const cells = [
-        { t: idx }, { t: row.desc }, { t: row.qty }, { t: row.side }, { t: row.pos },
-        { t: row.price }, { t: row.total },
-        { h: `<button class="btn-delete" onclick="removeRow(this)">✕</button>` }
-      ];
-      cells.forEach(c => {
-        const td = document.createElement('td');
-        td[c.h ? 'innerHTML' : 'textContent'] = c.t || c.h;
-        tr.appendChild(td);
-      });
-    });
-
-    item.parts.forEach(row => {
-      const tr = document.querySelector('#parts-table tbody').insertRow();
-      const idx = partIndex++;
-      const cells = [
-        { t: idx }, { t: row.art }, { t: row.name }, { t: row.qty }, { t: row.price }, { t: row.total },
-        { h: `<button class="btn-delete" onclick="removeRow(this)">✕</button>` }
-      ];
-      cells.forEach(c => {
-        const td = document.createElement('td');
-        td[c.h ? 'innerHTML' : 'textContent'] = c.t || c.h;
-        tr.appendChild(td);
-      });
-    });
-
-    currentOrderId = item.id;
-    calculateTotal();
-  }
-
-  function printClaimFromArchive(orderId) {
-    loadClaim(orderId);
-    setTimeout(() => {
-      const list = JSON.parse(localStorage.getItem('claims') || '[]');
-      const item = list.find(x => x.header.order === orderId);
-      if (item && item.status === 'zakaz-naryad') {
-        printDocument('order');
-      } else {
-        printDocument('claim');
-      }
-    }, 100);
-  }
-
-  function printOrderFromArchive(orderId) {
-    loadClaim(orderId);
-    setTimeout(() => {
-      const list = JSON.parse(localStorage.getItem('claims') || '[]');
-      const item = list.find(x => x.header.order === orderId);
-      if (item) {
-        // Изменяем статус на "zakaz-naryad"
-        const updatedItem = {
-          ...item,
-          status: 'zakaz-naryad',
-          savedAt: new Date().toISOString()
-        };
-        database.ref('claims/' + item.id).set(updatedItem)
-          .then(() => {
-            console.log('Статус изменён на заказ-наряд');
-            alert(`✅ Заявка №${updatedItem.header.order} преобразована в заказ-наряд!`);
-            loadFromFirebase(); // Обновляем архив
-          })
-          .catch(err => {
-            console.error('Ошибка изменения статуса:', err);
-            alert('Ошибка синхронизации. Статус не изменён.');
-          });
-      }
-    }, 100);
-  }
-
-  function printClaimDocument() {
-    const d = document.getElementById('current-date').textContent;
-    const n = document.getElementById('order-number').value;
-    const c = document.getElementById('client-company').value || '—';
-    const ct = document.getElementById('client-contact').value || '—';
-    const m = document.getElementById('master-name').value || '—';
-    const clientFio = document.getElementById('client-fio').value || '—';
-    const b = document.getElementById('vehicle-brand').value || '—';
-    const p = document.getElementById('license-plate').value || '—';
-    const ph = '+7 999 599 00 03';
-    const mi = (document.getElementById('mileage').value || '—') + ' км';
-
-    let works = 0, parts = 0;
-    document.querySelectorAll('#actual-table tbody tr').forEach(row => {
-      works += parseFloat(row.cells[6]?.textContent.replace(' ₽', '')) || 0;
-    });
-    document.querySelectorAll('#parts-table tbody tr').forEach(row => {
-      parts += parseFloat(row.cells[5]?.textContent.replace(' ₽', '')) || 0;
-    });
-    const grand = works + parts;
-
-    let html = `
-      <div style="font-family:Arial,sans-serif; padding:20px;">
-        <div style="display:flex; justify-content:space-between; margin-bottom:12px; font-size:13px;">
-          <div><strong>ПОСТАВЩИК:</strong> ООО "СЕРВИСТРАНСАВТО"<br>ИНН 7723905004, КПП 772101001, Код по ОКПО 29289257<br>111674, г. Москва, пр-кт Защитников Москвы<br>тел.: ${ph}</div>
-          <div><strong>Дата:</strong> ${d}</div>
-        </div>
-        <div style="text-align:center; font-weight:bold; margin:12px 0; font-size:18px;">ЗАЯВКА НА РЕМОНТ</div>
-
-        <table style="width:100%; border-collapse:collapse; font-size:13px; margin-bottom:16px;">
-          <tr><td style="padding:4px;">Номер наряда: ${n}</td><td style="padding:4px;">Дата: ${d}</td></tr>
-          <tr><td style="padding:4px;">Компания: ${c}</td><td style="padding:4px;">Контакт: ${ct}</td></tr>
-          <tr><td style="padding:4px;">Мастер: ${m}</td><td style="padding:4px;">ФИО клиента: ${clientFio}</td></tr>
-          <tr><td style="padding:4px;">Марка: ${b}</td><td style="padding:4px;">Гос. номер: ${p}</td></tr>
-          <tr><td style="padding:4px;">Телефон: ${ph}</td><td style="padding:4px;">Пробег: ${mi}</td></tr>
-        </table>
-    `;
-
-    html += createTableHTML('Заявленные работы', 'planned-table', false);
-    html += createTableHTML('Выполненные работы', 'actual-table', true);
-    html += createTableHTML('Запчасти', 'parts-table', true, true);
-
-    html += `
-      <div style="margin-top:20px; text-align:right; font-weight:bold; font-size:16px;">
-        <div>Итого работ: ${works.toFixed(2)} ₽</div>
-        <div>Итого запчастей: ${parts.toFixed(2)} ₽</div>
-        <div>Общая сумма: ${grand.toFixed(2)} ₽</div>
-      </div>
-
-      <div class="signature-line">
-        <div class="signature-block">
-          <p>Мастер: _________________________</p>
-          <p style="margin-top:20px;">(${m})</p>
-          <p style="margin-top:20px;">Печать организации:</p>
-          <div style="margin-top:5px; border-top:1px solid #000; width:80%;"></div>
-        </div>
-        <div>
-          <p style="margin-bottom:30px;">Подпись:</p>
-          <div style="border-top:1px solid #000; width:100px;"></div>
-        </div>
-      </div>
-    </div>
-    `;
-
-    printWindow(html);
-  }
-
-  function printOrderDocument() {
-    const d = document.getElementById('current-date').textContent;
-    const n = document.getElementById('order-number').value;
-    const m = document.getElementById('master-name').value || '—';
-
-    let works = 0, parts = 0;
-    document.querySelectorAll('#actual-table tbody tr').forEach(row => {
-      works += parseFloat(row.cells[6]?.textContent.replace(' ₽', '')) || 0;
-    });
-    document.querySelectorAll('#parts-table tbody tr').forEach(row => {
-      parts += parseFloat(row.cells[5]?.textContent.replace(' ₽', '')) || 0;
-    });
-    const grand = works + parts;
-
-    let html = `
-      <div style="font-family:Arial,sans-serif; padding:20px;">
-        <div style="display:flex; justify-content:space-between; margin-bottom:12px; font-size:13px;">
-          <div><strong>ПОСТАВЩИК:</strong> ООО "СЕРВИСТРАНСАВТО"<br>ИНН 7723905004, КПП 772101001, Код по ОКПО 29289257<br>111674, г. Москва, пр-кт Защитников Москвы<br>тел.: +7 999 599 00 03</div>
-          <div><strong>Дата:</strong> ${d}</div>
-        </div>
-        <div style="text-align:center; font-weight:bold; margin:12px 0; font-size:18px;">ЗАКАЗ-НАРЯД №${n}</div>
-    `;
-
-    html += createTableHTML('Выполненные работы', 'actual-table', true);
-    html += createTableHTML('Запчасти', 'parts-table', true, true);
-
-    html += `
-      <div style="margin-top:20px; text-align:right; font-weight:bold; font-size:16px;">
-        <div>Итого работ: ${works.toFixed(2)} ₽</div>
-        <div>Итого запчастей: ${parts.toFixed(2)} ₽</div>
-        <div>Общая сумма: ${grand.toFixed(2)} ₽</div>
-      </div>
-
-      <div class="signature-line">
-        <div class="signature-block">
-          <p>Мастер: _________________________</p>
-          <p style="margin-top:20px;">(${m})</p>
-          <p style="margin-top:20px;">Печать организации:</p>
-          <div style="margin-top:5px; border-top:1px solid #000; width:80%;"></div>
-        </div>
-        <div>
-          <p style="margin-bottom:30px;">Подпись:</p>
-          <div style="border-top:1px solid #000; width:100px;"></div>
-        </div>
-      </div>
-    </div>
-    `;
-
-    printWindow(html);
-  }
-
-  function createTableHTML(title, tableId, hasPrice, isPart = false) {
-    let html = `<h3 style="margin:12px 0; font-size:15px;">${title}</h3><table style="width:100%; border-collapse:collapse;">`;
-    const headers = isPart ? ['№','Артикул','Наименование','Кол-во','Цена','Сумма']
-                 : hasPrice ? ['№','Описание','Кол-во','Сторона','Положение','Цена','Сумма']
-                 : ['№','Описание','Кол-во','Сторона','Положение'];
-    html += '<thead><tr>';
-    headers.forEach(h => html += `<th style="text-align:left; padding:6px; border-bottom:1px solid #000;">${h}</th>`);
-    html += '</tr></thead><tbody>';
-
-    const rows = tableId === 'planned-table' ? document.querySelectorAll('#planned-table tbody tr')
-               : tableId === 'actual-table' ? document.querySelectorAll('#actual-table tbody tr')
-               : document.querySelectorAll('#parts-table tbody tr');
-
-    rows.forEach((row, i) => {
-      html += '<tr>';
-      if (isPart) {
-        html += `<td style="padding:6px; border-bottom:1px solid #000;">${i+1}</td>`;
-        html += `<td style="padding:6px; border-bottom:1px solid #000;">${row.cells[1].textContent}</td>`;
-        html += `<td style="padding:6px; border-bottom:1px solid #000;">${row.cells[2].textContent}</td>`;
-        html += `<td style="padding:6px; border-bottom:1px solid #000;">${row.cells[3].textContent}</td>`;
-        html += `<td style="padding:6px; border-bottom:1px solid #000;">${row.cells[4].textContent}</td>`;
-        html += `<td style="padding:6px; border-bottom:1px solid #000;">${row.cells[5].textContent}</td>`;
-      } else if (hasPrice) {
-        html += `<td style="padding:6px; border-bottom:1px solid #000;">${i+1}</td>`;
-        html += `<td style="padding:6px; border-bottom:1px solid #000;">${row.cells[1].textContent}</td>`;
-        html += `<td style="padding:6px; border-bottom:1px solid #000;">${row.cells[2].textContent}</td>`;
-        html += `<td style="padding:6px; border-bottom:1px solid #000;">${row.cells[3].textContent}</td>`;
-        html += `<td style="padding:6px; border-bottom:1px solid #000;">${row.cells[4].textContent}</td>`;
-        html += `<td style="padding:6px; border-bottom:1px solid #000;">${row.cells[5].textContent}</td>`;
-        html += `<td style="padding:6px; border-bottom:1px solid #000;">${row.cells[6].textContent}</td>`;
-      } else {
-        html += `<td style="padding:6px; border-bottom:1px solid #000;">${i+1}</td>`;
-        html += `<td style="padding:6px; border-bottom:1px solid #000;">${row.cells[1].textContent}</td>`;
-        html += `<td style="padding:6px; border-bottom:1px solid #000;">${row.cells[2].textContent}</td>`;
-        html += `<td style="padding:6px; border-bottom:1px solid #000;">${row.cells[3].textContent}</td>`;
-        html += `<td style="padding:6px; border-bottom:1px solid #000;">${row.cells[4].textContent}</td>`;
-      }
-      html += '</tr>';
-    });
-    html += '</tbody></table>';
-    return html;
-  }
-
-  function printWindow(html) {
-    const win = window.open('', '_blank');
-    if (!win) {
-      alert('Разрешите всплывающие окна для печати.');
-      return;
-    }
-    win.document.write(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <title>Печать</title>
-        <style>
-          body { font-family: Arial, sans-serif; padding: 20px; }
-          table { width: 100%; border-collapse: collapse; margin: 10px 0; }
-          th, td { text-align: left; padding: 6px; border-bottom: 1px solid #000; }
-          .signature-line { margin-top: 30px; display: flex; align-items: flex-end; gap: 30px; }
-          .signature-block { width: 50%; }
-        </style>
-      </head>
-      <body>
-        ${html}
-      </body>
-      </html>
-    `);
-    win.document.close();
-    win.focus();
-    win.onload = () => {
-      try { win.print(); } catch (e) { alert('Ошибка печати'); }
-    };
   }
 
   function exportTo1C(data) {
-    const order = data.header.order;
-    const date = data.header.date;
-    const company = data.header.company || '';
-    const contact = data.header.contact || '';
-    const master = data.header.master || '';
-    const clientFio = data.header.clientFio || '';
-    const brand = data.header.brand || '';
-    const plate = data.header.plate || '';
-    const phone = '+7 999 599 00 03';
-    const mileage = data.header.mileage.replace(' км', '') || '';
-
-    let lines = [];
-    data.planned.forEach(row => {
-      lines.push([order,date,company,contact,master,clientFio,brand,plate,phone,mileage,'Заявленная',row.desc,row.qty,row.side,row.pos,'','','']);
-    });
-    data.actual.forEach(row => {
-      lines.push([order,date,company,contact,master,clientFio,brand,plate,phone,mileage,'Выполненная',row.desc,row.qty,row.side,row.pos,'',row.price,row.total]);
-    });
-    data.parts.forEach(row => {
-      lines.push([order,date,company,contact,master,clientFio,brand,plate,phone,mileage,'Запчасть',row.name,row.qty,'','',row.art,row.price,row.total]);
-    });
-
-    const header = ['Номер наряда','Дата','Компания','Контакт','Мастер','ФИО клиента','Марка','Гос. номер','Телефон','Пробег (км)','Тип строки','Описание/Наименование','Кол-во','Сторона','Положение','Артикул','Цена','Сумма'];
-    let csv = header.map(cell => `"${cell.replace(/"/g,'""')}"`).join(';') + '\n';
-    lines.forEach(line => csv += line.map(cell => `"${(cell||'').toString().replace(/"/g,'""')}"`).join(';') + '\n');
-
-    const bom = '\uFEFF';
-    const blob = new Blob([bom + csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `zayavka_1c_${order}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    console.log('Экспорт в 1С:', data);
+    // Здесь можно добавить отправку на сервер или API 1С
+    // Например: fetch('/api/export-to-1c', { method: 'POST', body: JSON.stringify(data) })
+    alert('📦 Экспорт в 1С подготовлен. Реализуйте интеграцию по вашему API.');
   }
 
-  function switchTab(tab) {
-    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-    document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
-    document.getElementById(`${tab}-tab`).classList.add('active');
-    document.querySelector(`.tab-btn:nth-child(${tab === 'form' ? 1 : 2})`).classList.add('active');
-    
-    // Если переходим на форму — очищаем её
-    if (tab === 'form') {
-      resetForm();
+  function printClaimDocument() {
+    const printWindow = window.open('', '_blank');
+    const html = `
+      <html>
+        <head>
+          <title>Заявка на ремонт №${document.getElementById('order-number').value}</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 20px; }
+            table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+            th, td { border: 1px solid #000; padding: 6px; text-align: left; }
+            .header { text-align: center; margin-bottom: 20px; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h2>Заявка на ремонт №${document.getElementById('order-number').value}</h2>
+            <p>Дата: ${document.getElementById('current-date').textContent}</p>
+          </div>
+          <h3>Клиент</h3>
+          <p>Организация: ${document.getElementById('client-company').value}</p>
+          <p>Контактное лицо: ${document.getElementById('contact-person').value}</p>
+          <p>Телефон: ${document.getElementById('phone').value}</p>
+          <h3>Автомобиль</h3>
+          <p>Марка и модель: ${document.getElementById('car-model').value}</p>
+          <p>Госномер: ${document.getElementById('car-number').value}</p>
+          <p>VIN: ${document.getElementById('vin').value}</p>
+          <h3>Работы</h3>
+          <table>
+            <thead><tr><th>№</th><th>Наименование</th><th>Ед.</th><th>Кол-во</th><th>Цена</th><th>Сумма</th></tr></thead>
+            <tbody>
+              ${Array.from(document.querySelectorAll('#works-body tr')).map(row => {
+                const cells = row.querySelectorAll('input');
+                return `<tr><td>${row.querySelector('td:first-child').textContent}</td><td>${cells[0].value}</td><td>${cells[1].value}</td><td>${cells[2].value}</td><td>${cells[3].value}</td><td>${row.querySelector('.sum-cell').textContent}</td></tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+          <h3>Запчасти</h3>
+          <table>
+            <thead><tr><th>№</th><th>Наименование</th><th>Ед.</th><th>Кол-во</th><th>Цена</th><th>Сумма</th></tr></thead>
+            <tbody>
+              ${Array.from(document.querySelectorAll('#parts-body tr')).map(row => {
+                const cells = row.querySelectorAll('input');
+                return `<tr><td>${row.querySelector('td:first-child').textContent}</td><td>${cells[0].value}</td><td>${cells[1].value}</td><td>${cells[2].value}</td><td>${cells[3].value}</td><td>${row.querySelector('.sum-cell').textContent}</td></tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+          <h3>Итого</h3>
+          <p>${document.getElementById('total-display').textContent}</p>
+        </body>
+      </html>
+    `;
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+    printWindow.close();
+  }
+
+  // --- ЗАГРУЗКА АРХИВА ---
+  function loadFromFirebase() {
+    if (!currentUser) return;
+    renderArchive();
+  }
+
+  // --- ИНИЦИАЛИЗАЦИЯ ---
+  document.addEventListener('DOMContentLoaded', () => {
+    // При загрузке страницы — если нет авторизации, показываем кнопку входа
+    if (!currentUser) {
+      document.getElementById('user-info').innerHTML = `
+        <button onclick="signInWithGoogle()">Войти через Google</button>
+      `;
     }
-  }
+  });
 </script>
 
 </body>
