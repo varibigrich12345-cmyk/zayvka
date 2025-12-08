@@ -97,6 +97,7 @@
     }
     .btn-sm { padding: 4px 8px; font-size: 12px; }
     .btn-delete { background: var(--danger); padding: 2px 6px; font-size: 12px; }
+    .btn-edit { background: #ffc107; padding: 2px 6px; font-size: 12px; }
     .no-print {
       display: block;
       text-align: center;
@@ -312,7 +313,7 @@
 
   let workIndex = 1, actualIndex = 1, partIndex = 1;
   let lastSeq = parseInt(localStorage.getItem('lastClaimSeq') || '0');
-  let currentOrderId = null; // Хранит ID текущей заявки при редактировании
+  let currentOrderId = null;
 
   init();
 
@@ -350,7 +351,7 @@
     const d = `${String(now.getDate()).padStart(2, '0')}.${String(now.getMonth() + 1).padStart(2, '0')}.${now.getFullYear()}`;
     document.getElementById('current-date').textContent = d;
     generateOrderNumber();
-    currentOrderId = null; // Сбрасываем ID при очистке формы
+    currentOrderId = null;
     document.getElementById('total-display').textContent = 'Общая сумма: 0.00 ₽';
   }
 
@@ -450,7 +451,6 @@
   }
 
   function saveOrUpdateClaim(data) {
-    // Если мы редактируем существующую заявку — обновляем её
     if (currentOrderId) {
       database.ref('claims/' + currentOrderId).set(data)
         .then(() => {
@@ -464,7 +464,6 @@
           exportTo1C(data);
         });
     } else {
-      // Если это новая заявка — создаём её
       const newClaimRef = database.ref('claims').push();
       newClaimRef.set(data)
         .then(() => {
@@ -491,7 +490,6 @@
       return null;
     }
 
-    // Расчёт общей суммы
     let works = 0, parts = 0;
     document.querySelectorAll('#actual-table tbody tr').forEach(row => {
       const price = parseFloat(row.cells[5]?.textContent.replace(' ₽', '')) || 0;
@@ -605,8 +603,9 @@
           <div>Итого: ${grandStr}</div>
           <div class="archive-actions">
             ${item.status === 'zayavka' ? 
-              `<button class="btn-sm" style="background:#17a2b8;" onclick="loadClaim('${item.header.order}')">Редактировать</button>` : 
+              `<button class="btn-sm" style="background:#28a745;" onclick="printOrderFromArchive('${item.header.order}')">Распечатать заказ-наряд</button>` : 
               `<button class="btn-sm" style="background:#6c757d;" disabled>Закрыто</button>`}
+            <button class="btn-sm" style="background:#17a2b8;" onclick="loadClaim('${item.header.order}')">Редактировать</button>
             <button class="btn-sm" style="background:#28a745;" onclick="printClaimFromArchive('${item.header.order}')">Печать</button>
           </div>
         `;
@@ -679,8 +678,8 @@
       });
     });
 
-    currentOrderId = item.id; // Сохраняем ID для обновления
-    calculateTotal(); // Пересчитываем сумму
+    currentOrderId = item.id;
+    calculateTotal();
   }
 
   function printClaimFromArchive(orderId) {
@@ -692,6 +691,32 @@
         printDocument('order');
       } else {
         printDocument('claim');
+      }
+    }, 100);
+  }
+
+  function printOrderFromArchive(orderId) {
+    loadClaim(orderId);
+    setTimeout(() => {
+      const list = JSON.parse(localStorage.getItem('claims') || '[]');
+      const item = list.find(x => x.header.order === orderId);
+      if (item) {
+        // Изменяем статус на "zakaz-naryad"
+        const updatedItem = {
+          ...item,
+          status: 'zakaz-naryad',
+          savedAt: new Date().toISOString()
+        };
+        database.ref('claims/' + item.id).set(updatedItem)
+          .then(() => {
+            console.log('Статус изменён на заказ-наряд');
+            alert(`✅ Заявка №${updatedItem.header.order} преобразована в заказ-наряд!`);
+            loadFromFirebase(); // Обновляем архив
+          })
+          .catch(err => {
+            console.error('Ошибка изменения статуса:', err);
+            alert('Ошибка синхронизации. Статус не изменён.');
+          });
       }
     }, 100);
   }
