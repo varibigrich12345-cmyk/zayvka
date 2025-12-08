@@ -183,6 +183,259 @@
 
   <!-- === ФОРМА === -->
   <div id="form-tab" class="tab-content active">
+    <!-- СКРЫТОЕ ПОЛЕ ДЛЯ ID -->
+    <input type="hidden" id="claim-id">
+
+    <!-- ... (остальной HTML формы без изменений) ... -->
+    
+    <div class="no-print">
+      <button class="btn" onclick="printClaim()">📄 Распечатать заявку на ремонт</button>
+    </div>
+  </div>
+
+  <!-- === АРХИВ === -->
+  <div id="archive-tab" class="tab-content">
+    <h2>Архив заявок</h2>
+    <div id="archive-list" class="archive-list"></div>
+    <div class="no-print" style="margin-top:20px;">
+      <button class="btn btn-archive" style="background:#6c757d;" onclick="switchTab('form')">← Заявка на ремонт</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // === ИНИЦИАЛИЗАЦИЯ FIREBASE ===
+  const firebaseConfig = {
+    apiKey: "AIzaSyDixYVempEv1EIehC_oSMI98stT61deZ6Y",
+    authDomain: "servistransavto-danik.firebaseapp.com",
+    databaseURL: "https://servistransavto-danik-default-rtdb.firebaseio.com",
+    projectId: "servistransavto-danik",
+    storageBucket: "servistransavto-danik.firebasestorage.app",
+    messagingSenderId: "770451755248",
+    appId: "1:770451755248:web:94874fca1cb9843945f235"
+  };
+
+  firebase.initializeApp(firebaseConfig);
+  const database = firebase.database();
+
+  let workIndex = 1, actualIndex = 1, partIndex = 1;
+  let lastSeq = parseInt(localStorage.getItem('lastClaimSeq') || '0');
+
+  init();
+
+  function init() {
+    const now = new Date();
+    const d = `${String(now.getDate()).padStart(2, '0')}.${String(now.getMonth() + 1).padStart(2, '0')}.${now.getFullYear()}`;
+    document.getElementById('current-date').textContent = d;
+    generateOrderNumber();
+    loadFromFirebase();
+    setInterval(loadFromFirebase, 10000);
+  }
+
+  function generateOrderNumber() {
+    lastSeq++;
+    localStorage.setItem('lastClaimSeq', lastSeq.toString());
+    document.getElementById('order-number').value = `СТА-${new Date().getFullYear()}-${String(lastSeq).padStart(3, '0')}`;
+  }
+
+  function resetForm() {
+    document.getElementById('claim-id').value = ''; // ← СБРОС ID
+    document.getElementById('client-company').value = '';
+    // ... (остальные поля) ...
+    document.getElementById('total-display').textContent = 'Общая сумма: 0.00 ₽';
+  }
+
+  // --- ОСТАЛЬНЫЕ ФУНКЦИИ (addWorkRow, calculateTotal и т.д.) без изменений ---
+
+  function printClaim() {
+    const data = prepareData('zayavka');
+    if (!data) return;
+
+    saveOrUpdateClaim(data);
+    printClaimDocument();
+    resetForm();
+  }
+
+  function saveOrUpdateClaim(data) {
+    const claimId = document.getElementById('claim-id').value;
+    let ref;
+    if (claimId) {
+      // Обновляем существующую
+      ref = database.ref('claims/' + claimId);
+    } else {
+      // Создаём новую
+      ref = database.ref('claims').push();
+      // Сохраняем ID в данных
+      data.id = ref.key;
+    }
+    
+    ref.set(data)
+      .then(() => {
+        exportTo1C(data);
+        alert(`✅ Заявка №${data.header.order} ${claimId ? 'обновлена' : 'сохранена'}!`);
+      })
+      .catch(err => {
+        alert('Ошибка синхронизации. Данные сохранены локально.');
+        exportTo1C(data);
+      });
+  }
+
+  function loadClaim(orderId) {
+    const list = JSON.parse(localStorage.getItem('claims') || '[]');
+    const item = list.find(x => x.header.order === orderId);
+    if (!item) return;
+
+    switchTab('form');
+    
+    // ← УСТАНАВЛИВАЕМ ID
+    document.getElementById('claim-id').value = item.id;
+    
+    // ... (заполняем остальные поля) ...
+
+    calculateTotal();
+  }
+
+  function switchTab(tab) {
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+    document.getElementById(`${tab}-tab`).classList.add('active');
+    document.querySelector(`.tab-btn:nth-child(${tab === 'form' ? 1 : 2})`).classList.add('active');
+    
+    // НЕ ОЧИЩАЕМ ФОРМУ при переходе на неё, если есть claim-id
+    if (tab === 'form') {
+      const claimId = document.getElementById('claim-id').value;
+      if (!claimId) {
+        resetForm();
+      }
+    }
+  }
+
+  // --- ОСТАЛЬНЫЙ КОД (renderArchive, exportTo1C и т.д.) без изменений ---
+</script>
+
+</body>
+</html>      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0;
+      font-size: 13px;
+    }
+    th, td {
+      text-align: left;
+      padding: 8px 6px;
+      border-bottom: 1px solid var(--border);
+    }
+    thead th {
+      font-weight: 600;
+      background: #f8f9fa;
+    }
+    .preview-table th, .preview-table td {
+      border: none;
+      border-bottom: 1px solid #000;
+    }
+    .btn {
+      padding: 8px 16px;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 15px;
+      font-weight: bold;
+      margin: 5px;
+    }
+    .btn-sm { padding: 4px 8px; font-size: 12px; }
+    .btn-delete { background: var(--danger); padding: 2px 6px; font-size: 12px; }
+    .no-print {
+      display: block;
+      text-align: center;
+      margin-top: 10px;
+    }
+    .tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .tab-btn {
+      padding: 8px 16px;
+      background: #e9ecef;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .tab-btn.active {
+      background: var(--primary);
+      color: white;
+    }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    .archive-list {
+      display: grid;
+      gap: 12px;
+      margin-top: 10px;
+    }
+    .archive-item {
+      padding: 14px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      background: #fafafa;
+      font-size: 14px;
+    }
+    .archive-date-header {
+      background: #e9ecef;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-weight: bold;
+      margin-top: 20px;
+    }
+    .archive-status {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 12px;
+      margin-left: 8px;
+    }
+    .status-zayavka { background: #d1ecf1; color: #0c5460; }
+    .status-zakaz { background: #d4edda; color: #155724; }
+    .archive-actions {
+      margin-top: 10px;
+      text-align: right;
+    }
+    .signature-line {
+      margin-top: 30px;
+      display: flex;
+      align-items: flex-end;
+      gap: 30px;
+    }
+    .signature-block {
+      width: 50%;
+    }
+    #total-display {
+      margin-top: 12px;
+      text-align: right;
+      font-size: 16px;
+      font-weight: bold;
+    }
+  </style>
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+</head>
+<body>
+
+<div class="container">
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('form')">Заявка на ремонт</button>
+    <button class="tab-btn" onclick="switchTab('archive')">Архив</button>
+  </div>
+
+  <!-- === ФОРМА === -->
+  <div id="form-tab" class="tab-content active">
     <div class="header-row">
       <div>
         ПОСТАВЩИК: Общество с ограниченной ответственностью "СЕРВИСТРАНСАВТО"<br>
